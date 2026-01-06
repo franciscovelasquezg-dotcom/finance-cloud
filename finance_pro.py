@@ -159,8 +159,7 @@ def login_register_page():
                 <h1 style="color: #60A5FA; margin-bottom: 0;">FinancePro <span style="font-size:0.5em">☁️</span></h1>
                 <p style="color: #94A3B8;">Cloud Edition (Supabase)</p>
                 <div style="background: #1e293b; padding: 10px; border-radius: 8px; font-size: 0.8rem; margin-top: 10px; border: 1px solid #334155;">
-                    📱 <b>Acceso Móvil (Misma Red):</b> <span style="color: #F472B6;">http://{get_ip_address()}:8501</span><br>
-                    (Pronto acceso global con URL)
+                    🌍 <b>Estado:</b> <span style="color: #10B981;">Online (Nube Global)</span>
                 </div>
             </div>
         """, unsafe_allow_html=True)

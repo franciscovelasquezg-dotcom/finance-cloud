@@ -167,7 +167,7 @@ def login_register_page():
         t1, t2, t3 = st.tabs(["Ingresar", "Registro", "Recuperar"])
         
         with t1:
-            u = st.text_input("Usuario", key="l_u")
+            u = st.text_input("Correo Electrónico", key="l_u")
             p = st.text_input("Contraseña", type="password", key="l_p")
             if st.button("Conectar", use_container_width=True):
                 user = db_login(u, p)
@@ -180,7 +180,7 @@ def login_register_page():
         
         with t2:
             st.info("Tus datos se guardarán en la nube privada.")
-            nu = st.text_input("Usuario Nuevo", key="s_u")
+            nu = st.text_input("Correo Electrónico Nuevo", key="s_u")
             nn = st.text_input("Nombre", key="s_n")
             np = st.text_input("Contraseña", type="password", key="s_p")
             nr = st.text_input("Palabra Clave (Recuperación)", key="s_r")
@@ -195,10 +195,10 @@ def login_register_page():
                         st.session_state['user_info'] = user
                         st.rerun()
                 else:
-                    st.error("Usuario ocupado.")
+                    st.error("Este correo ya está registrado.")
 
         with t3:
-            ru = st.text_input("Usuario", key="r_u")
+            ru = st.text_input("Correo Electrónico", key="r_u")
             rk = st.text_input("Palabra Clave", key="r_k")
             rn = st.text_input("Nueva Contraseña", type="password", key="r_n")
             if st.button("Restablecer", use_container_width=True):

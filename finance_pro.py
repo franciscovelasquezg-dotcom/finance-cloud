@@ -186,8 +186,8 @@ def login_register_page():
     with col2:
         st.markdown(f"""
             <div style="text-align: center; margin-bottom: 2rem;">
-                <h1 style="color: #60A5FA; margin-bottom: 0;">FinanceSaaS <span style="font-size:0.5em">🚀</span></h1>
-                <p style="color: #94A3B8;">Plataforma Profesional</p>
+                <h1 style="color: #60A5FA; margin-bottom: 0;">FinancePro <span style="font-size:0.5em">�</span></h1>
+                <p style="color: #94A3B8;">Professional Cloud Suite</p>
                 <div style="background: #1e293b; padding: 10px; border-radius: 8px; font-size: 0.8rem; margin-top: 10px; border: 1px solid #334155;">
                     🌍 <b>Estado:</b> <span style="color: #10B981;">Online (Nube Global)</span>
                 </div>

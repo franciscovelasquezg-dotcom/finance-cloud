@@ -48,48 +48,80 @@ def check_hashes(password, hashed_text):
 
 # --- FUNCIONES DE BASE DE DATOS (CLOUD) ---
 
-def db_crear_usuario(username, password, nombre, recovery_key):
-    try:
-        data = {
-            "username": username,
-            "password": make_hashes(password),
-            "nombre": nombre,
-            "recovery_key": recovery_key
-        }
-        response = supabase.table("usuarios").insert(data).execute()
-        if response.data:
-            return True
-    except Exception as e:
-        # Error habitual: user duplicado
-        pass
-    return False
+# --- FUNCIONES DE BASE DE DATOS (SAAS / AUTH) ---
 
-def db_login(username, password):
+def db_crear_usuario(email, password, nombre):
     try:
-        response = supabase.table("usuarios").select("*").eq("username", username).execute()
-        if response.data:
-            user = response.data[0]
-            if check_hashes(password, user['password']):
-                return user
+        # 1. Registrar en Supabase Auth
+        res = supabase.auth.sign_up({
+            "email": email,
+            "password": password,
+        })
+        
+        # 2. Si se crea, guardamos perfil con 30 días de regalo
+        if res.user:
+            user_id = res.user.id
+            # Calcular fecha de vencimiento (Hoy + 30 días)
+            fin_demo = (datetime.now() + timedelta(days=30)).isoformat()
+            
+            supabase.table("perfiles").insert({
+                "id": user_id,
+                "nombre": nombre,
+                "plan": "trial",
+                "activo": True,
+                "subscription_end": fin_demo
+            }).execute()
+            return True, "Revisa tu correo para confirmar la cuenta."
     except Exception as e:
-        print(e)
-    return None
+        return False, str(e)
+    return False, "Error desconocido"
 
-def db_recuperar_password(username, recovery_key, new_password):
+def db_login(email, password):
     try:
-        response = supabase.table("usuarios").select("*").eq("username", username).execute()
-        if response.data:
-            user = response.data[0]
-            # Validar recovery key (case insensitive)
-            if user.get('recovery_key', '').lower().strip() == recovery_key.lower().strip():
-                supabase.table("usuarios").update({
-                    "password": make_hashes(new_password)
-                }).eq("id", user['id']).execute()
-                return True
+        # Autenticar
+        res = supabase.auth.sign_in_with_password({
+            "email": email,
+            "password": password,
+        })
+        
+        if res.user:
+            # CHECK GATEKEEPER 
+            profile_res = supabase.table("perfiles").select("*").eq("id", res.user.id).execute()
+            
+            if profile_res.data:
+                profile = profile_res.data[0]
+                
+                # REVISAR VENCIMIENTO
+                if profile.get('subscription_end'):
+                    fin = datetime.fromisoformat(profile['subscription_end'].replace('Z', '+00:00'))
+                    ahora = datetime.now(fin.tzinfo)
+                    
+                    dias_restantes = (fin - ahora).days
+                    profile['dias_restantes'] = dias_restantes
+                    
+                    if dias_restantes < 0:
+                        return None, "🔒 TIEMPO AGOTADO: Tu periodo de prueba terminó. Por favor renueva tu plan."
+                
+                if not profile.get('activo', True):
+                    return None, "🔒 BLOQUEADO: Tu cuenta ha sido desactivada."
+                    
+                return profile, None 
+            else:
+                return {"id": res.user.id, "nombre": "Usuario", "plan": "free", "dias_restantes": 30}, None
+                
     except Exception as e:
-        print(e)
-    return False
+        return None, "Correo o contraseña incorrectos."
+    
+    return None, "Error de credenciales"
 
+def db_recuperar_password(email):
+    try:
+        supabase.auth.reset_password_email(email)
+        return True
+    except:
+        return False
+
+# ... (Funciones db_insertar, etc. se mantienen igual) ...
 def db_insertar(usuario_id, fecha, tipo, categoria, descripcion, monto, metodo):
     try:
         data = {
@@ -135,12 +167,10 @@ st.markdown("""
         border: 1px solid #334155 !important; border-radius: 8px !important;
     }
     .stButton > button {
-        background: linear-gradient(135deg, #3B82F6 0%, #2563EB 100%); /* Blue for Cloud */
+        background: linear-gradient(135deg, #3B82F6 0%, #2563EB 100%);
         color: white; border: none; padding: 0.6rem 1.2rem; font-weight: 600; border-radius: 8px;
     }
     .metric-container { background-color: #1E293B; border-radius: 12px; padding: 24px; border: 1px solid #334155; }
-    .metric-value { font-size: 2rem; font-weight: 700; margin-top: 8px; }
-    [data-testid="stSidebar"] { background-color: #111827; border-right: 1px solid #334155; }
     </style>
 """, unsafe_allow_html=True)
 
@@ -156,8 +186,8 @@ def login_register_page():
     with col2:
         st.markdown(f"""
             <div style="text-align: center; margin-bottom: 2rem;">
-                <h1 style="color: #60A5FA; margin-bottom: 0;">FinancePro <span style="font-size:0.5em">☁️</span></h1>
-                <p style="color: #94A3B8;">Cloud Edition (Supabase)</p>
+                <h1 style="color: #60A5FA; margin-bottom: 0;">FinanceSaaS <span style="font-size:0.5em">🚀</span></h1>
+                <p style="color: #94A3B8;">Plataforma Profesional</p>
                 <div style="background: #1e293b; padding: 10px; border-radius: 8px; font-size: 0.8rem; margin-top: 10px; border: 1px solid #334155;">
                     🌍 <b>Estado:</b> <span style="color: #10B981;">Online (Nube Global)</span>
                 </div>
@@ -169,84 +199,102 @@ def login_register_page():
         with t1:
             u = st.text_input("Correo Electrónico", key="l_u")
             p = st.text_input("Contraseña", type="password", key="l_p")
-            if st.button("Conectar", use_container_width=True):
-                user = db_login(u, p)
+            if st.button("Iniciar Sesión", use_container_width=True):
+                user, error = db_login(u, p)
                 if user:
+                    st.success(f"Bienvenido de nuevo, {user.get('nombre', 'Usuario')}")
+                    time.sleep(1)
                     st.session_state['logged_in'] = True
                     st.session_state['user_info'] = user
                     st.rerun()
                 else:
-                    st.error("Error de credenciales")
+                    st.error(error)
         
         with t2:
-            st.info("Tus datos se guardarán en la nube privada.")
-            nu = st.text_input("Correo Electrónico Nuevo", key="s_u")
-            nn = st.text_input("Nombre", key="s_n")
-            np = st.text_input("Contraseña", type="password", key="s_p")
-            nr = st.text_input("Palabra Clave (Recuperación)", key="s_r")
-            if st.button("Crear Cuenta Cloud", use_container_width=True):
-                if db_crear_usuario(nu, np, nn, nr):
-                    st.success("¡Creado con éxito! Iniciando sesión...")
-                    time.sleep(1)
-                    # Auto-login
-                    user = db_login(nu, np)
-                    if user:
-                        st.session_state['logged_in'] = True
-                        st.session_state['user_info'] = user
-                        st.rerun()
+            st.info("Prueba Premium Gratis por 30 Días.")
+            nu = st.text_input("Correo Electrónico", key="s_u")
+            nn = st.text_input("Nombre Completo", key="s_n")
+            np = st.text_input("Contraseña", type="password", help="Mínimo 6 caracteres", key="s_p")
+            
+            if st.button("Comenzar Prueba Gratis", use_container_width=True):
+                ok, msg = db_crear_usuario(nu, np, nn)
+                if ok:
+                    st.success("¡Cuenta creada! Revisa tu correo para confirmar.")
                 else:
-                    st.error("Este correo ya está registrado.")
+                    st.error(f"Error: {msg}")
 
         with t3:
-            ru = st.text_input("Correo Electrónico", key="r_u")
-            rk = st.text_input("Palabra Clave", key="r_k")
-            rn = st.text_input("Nueva Contraseña", type="password", key="r_n")
-            if st.button("Restablecer", use_container_width=True):
-                if db_recuperar_password(ru, rk, rn):
-                    st.success("Listo. Inicia sesión.")
+            ru = st.text_input("Correo para recuperar", key="r_u")
+            if st.button("Enviar Enlace", use_container_width=True):
+                if db_recuperar_password(ru):
+                    st.success("¡Enviado! Revisa tu bandeja de entrada.")
                 else:
-                    st.error("Datos incorrectos.")
+                    st.error("Error al enviar.")
 
 def main_app():
     user = st.session_state['user_info']
+    
+    # --- BARRA LATERAL CON INFORMACIÓN DE LA SUSCRIPCIÓN ---
     with st.sidebar:
-        st.write(f"Conectado: **{user['nombre']}**")
+        st.write(f"Hola, **{user.get('nombre', 'Usuario')}**")
+        
+        dias = user.get('dias_restantes', 30)
+        
+        if dias > 5:
+            st.success(f"✅ Membresía Activa\n\nQuedan {dias} días")
+        elif dias >= 0:
+            st.warning(f"⚠️ **Atención**: Quedan solo {dias} días de prueba.")
+            st.markdown("[Renovar Ahora](#)") # Aquí pondríamos el link de pago
+        else:
+            st.error("⛔ Plan Vencido")
+
+        st.divider()
         nav = st.radio("", ["Panel", "Ingreso", "Gasto", "Datos"])
-        if st.button("Salir"):
+        
+        st.divider()
+        if st.button("Cerrar Sesión"):
+            supabase.auth.sign_out()
             st.session_state['logged_in'] = False
             st.rerun()
 
+    # --- CONTENIDO PRINCIPAL ---
     if nav == "Panel":
-        st.title("Panel Financiero (Nube)")
+        if user.get('dias_restantes', 0) <= 5:
+            st.info(f"💡 Recordatorio: Tu membresía vence en {user.get('dias_restantes')} días. Asegura tu acceso continuo.")
+
+        st.title("Tu Balance")
         df = db_obtener(user['id'])
         
         ing = df[df['tipo']=='Ingreso']['monto'].sum() if not df.empty else 0
         gas = df[df['tipo']=='Gasto']['monto'].sum() if not df.empty else 0
         
         c1, c2, c3 = st.columns(3)
-        c1.metric("Balance", f"${ing-gas:,.0f}")
-        c2.metric("Ingresos", f"${ing:,.0f}")
-        c3.metric("Gastos", f"${gas:,.0f}")
+        c1.metric("Neto", f"${ing-gas:,.0f}")
+        c2.metric("Entradas", f"${ing:,.0f}")
+        c3.metric("Salidas", f"${gas:,.0f}")
         
         if not df.empty:
             st.plotly_chart(px.area(df, x='fecha', y='monto', color='tipo', color_discrete_map={'Ingreso':'#10B981','Gasto':'#EF4444'}), use_container_width=True)
+        else:
+            st.info("¡Bienvenido! Empieza registrando tus ingresos.")
 
     elif nav in ["Ingreso", "Gasto"]:
         st.header(f"Registrar {nav}")
         m = st.number_input("Monto", step=100.0)
         c1, c2 = st.columns(2)
         f = c1.date_input("Fecha", datetime.now())
-        cat = c1.text_input("Categoría/Fuente", "General")
-        met = c2.selectbox("Método", ["Efectivo", "Tarjeta", "Digital"])
-        desc = c2.text_input("Notas")
+        cat = c1.text_input("Categoría", "General")
+        met = c2.selectbox("Método", ["Efectivo", "Tarjeta", "Transferencia"])
+        desc = c2.text_input("Nota opcional")
         
-        if st.button("Guardar en Nube", use_container_width=True):
+        if st.button("Guardar Movimiento", use_container_width=True):
             db_insertar(user['id'], f, nav, cat, desc, m, met)
-            st.success("Sincronizado!")
-            time.sleep(1)
+            st.success("¡Guardado!")
+            time.sleep(0.5)
             st.rerun()
 
     elif nav == "Datos":
+        st.title("Historial")
         st.dataframe(db_obtener(user['id']), use_container_width=True)
 
 if st.session_state['logged_in']:

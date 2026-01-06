@@ -1,0 +1,249 @@
+import streamlit as st
+import pandas as pd
+import plotly.express as px
+from datetime import datetime
+import time
+import socket
+import hashlib
+from supabase import create_client, Client
+
+# --- CONFIGURACIÓN SUPABASE ---
+# ESTAS CREDENCIALES SON SEGURAS EN EL CLIENTE PORQUE SON DE TIPO "ANON" (PÚBLICAS)
+SUPABASE_URL = "https://ucfdvkirludawhplqgjv.supabase.co"
+SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InVjZmR2a2lybHVkYXdocGxxZ2p2Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjcxMTY4NTMsImV4cCI6MjA4MjY5Mjg1M30.tR-Wl41jo64UvvltNMaIS2qwOrkdksD5BW1H-cWL7Oo"
+
+@st.cache_resource
+def init_supabase():
+    return create_client(SUPABASE_URL, SUPABASE_KEY)
+
+supabase = init_supabase()
+
+# --- CONFIGURACIÓN PRINCIPAL ---
+st.set_page_config(
+    page_title="FinancePro Cloud",
+    page_icon="☁️",
+    layout="wide",
+    initial_sidebar_state="collapsed"
+)
+
+# --- UTILIDADES DE RED ---
+def get_ip_address():
+    try:
+        s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        s.connect(("8.8.8.8", 80))
+        ip = s.getsockname()[0]
+        s.close()
+        return ip
+    except:
+        return "127.0.0.1"
+
+# --- SEGURIDAD ---
+def make_hashes(password):
+    return hashlib.sha256(str.encode(password)).hexdigest()
+
+def check_hashes(password, hashed_text):
+    if make_hashes(password) == hashed_text:
+        return True
+    return False
+
+# --- FUNCIONES DE BASE DE DATOS (CLOUD) ---
+
+def db_crear_usuario(username, password, nombre, recovery_key):
+    try:
+        data = {
+            "username": username,
+            "password": make_hashes(password),
+            "nombre": nombre,
+            "recovery_key": recovery_key
+        }
+        response = supabase.table("usuarios").insert(data).execute()
+        if response.data:
+            return True
+    except Exception as e:
+        # Error habitual: user duplicado
+        pass
+    return False
+
+def db_login(username, password):
+    try:
+        response = supabase.table("usuarios").select("*").eq("username", username).execute()
+        if response.data:
+            user = response.data[0]
+            if check_hashes(password, user['password']):
+                return user
+    except Exception as e:
+        print(e)
+    return None
+
+def db_recuperar_password(username, recovery_key, new_password):
+    try:
+        response = supabase.table("usuarios").select("*").eq("username", username).execute()
+        if response.data:
+            user = response.data[0]
+            # Validar recovery key (case insensitive)
+            if user.get('recovery_key', '').lower().strip() == recovery_key.lower().strip():
+                supabase.table("usuarios").update({
+                    "password": make_hashes(new_password)
+                }).eq("id", user['id']).execute()
+                return True
+    except Exception as e:
+        print(e)
+    return False
+
+def db_insertar(usuario_id, fecha, tipo, categoria, descripcion, monto, metodo):
+    try:
+        data = {
+            "usuario_id": usuario_id,
+            "fecha": str(fecha),
+            "tipo": tipo,
+            "categoria": categoria,
+            "descripcion": descripcion,
+            "monto": float(monto),
+            "metodo": metodo
+        }
+        supabase.table("transacciones").insert(data).execute()
+        return True
+    except Exception as e:
+        st.error(f"Error conexión: {e}")
+        return False
+
+def db_obtener(usuario_id):
+    try:
+        response = supabase.table("transacciones").select("*").eq("usuario_id", usuario_id).order("fecha", desc=True).execute()
+        if response.data:
+            df = pd.DataFrame(response.data)
+            df['fecha'] = pd.to_datetime(df['fecha'])
+            return df
+    except Exception as e:
+        pass
+    return pd.DataFrame()
+
+def db_borrar(id_transaccion, usuario_id):
+    try:
+        supabase.table("transacciones").delete().eq("id", id_transaccion).eq("usuario_id", usuario_id).execute()
+    except:
+        pass
+
+# --- ESTILOS CSS ---
+st.markdown("""
+    <style>
+    @import url('https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;700&display=swap');
+    html, body, [class*="css"] { font-family: 'Outfit', sans-serif; color: #E2E8F0; }
+    .stApp { background-color: #0F172A; }
+    .stTextInput input, .stNumberInput input, .stDateInput input, .stSelectbox > div > div {
+        background-color: #1E293B !important; color: white !important;
+        border: 1px solid #334155 !important; border-radius: 8px !important;
+    }
+    .stButton > button {
+        background: linear-gradient(135deg, #3B82F6 0%, #2563EB 100%); /* Blue for Cloud */
+        color: white; border: none; padding: 0.6rem 1.2rem; font-weight: 600; border-radius: 8px;
+    }
+    .metric-container { background-color: #1E293B; border-radius: 12px; padding: 24px; border: 1px solid #334155; }
+    .metric-value { font-size: 2rem; font-weight: 700; margin-top: 8px; }
+    [data-testid="stSidebar"] { background-color: #111827; border-right: 1px solid #334155; }
+    </style>
+""", unsafe_allow_html=True)
+
+# --- ESTADO Y RUTAS ---
+
+if 'logged_in' not in st.session_state:
+    st.session_state['logged_in'] = False
+if 'user_info' not in st.session_state:
+    st.session_state['user_info'] = None
+
+def login_register_page():
+    col1, col2, col3 = st.columns([1, 2, 1])
+    with col2:
+        st.markdown(f"""
+            <div style="text-align: center; margin-bottom: 2rem;">
+                <h1 style="color: #60A5FA; margin-bottom: 0;">FinancePro <span style="font-size:0.5em">☁️</span></h1>
+                <p style="color: #94A3B8;">Cloud Edition (Supabase)</p>
+                <div style="background: #1e293b; padding: 10px; border-radius: 8px; font-size: 0.8rem; margin-top: 10px; border: 1px solid #334155;">
+                    📱 <b>Acceso Móvil (Misma Red):</b> <span style="color: #F472B6;">http://{get_ip_address()}:8501</span><br>
+                    (Pronto acceso global con URL)
+                </div>
+            </div>
+        """, unsafe_allow_html=True)
+        
+        t1, t2, t3 = st.tabs(["Ingresar", "Registro", "Recuperar"])
+        
+        with t1:
+            u = st.text_input("Usuario", key="l_u")
+            p = st.text_input("Contraseña", type="password", key="l_p")
+            if st.button("Conectar", use_container_width=True):
+                user = db_login(u, p)
+                if user:
+                    st.session_state['logged_in'] = True
+                    st.session_state['user_info'] = user
+                    st.rerun()
+                else:
+                    st.error("Error de credenciales")
+        
+        with t2:
+            st.info("Tus datos se guardarán en la nube privada.")
+            nu = st.text_input("Usuario Nuevo", key="s_u")
+            nn = st.text_input("Nombre", key="s_n")
+            np = st.text_input("Contraseña", type="password", key="s_p")
+            nr = st.text_input("Palabra Clave (Recuperación)", key="s_r")
+            if st.button("Crear Cuenta Cloud", use_container_width=True):
+                if db_crear_usuario(nu, np, nn, nr):
+                    st.success("Creado! Ingresa ahora.")
+                else:
+                    st.error("Usuario ocupado.")
+
+        with t3:
+            ru = st.text_input("Usuario", key="r_u")
+            rk = st.text_input("Palabra Clave", key="r_k")
+            rn = st.text_input("Nueva Contraseña", type="password", key="r_n")
+            if st.button("Restablecer", use_container_width=True):
+                if db_recuperar_password(ru, rk, rn):
+                    st.success("Listo. Inicia sesión.")
+                else:
+                    st.error("Datos incorrectos.")
+
+def main_app():
+    user = st.session_state['user_info']
+    with st.sidebar:
+        st.write(f"Conectado: **{user['nombre']}**")
+        nav = st.radio("", ["Panel", "Ingreso", "Gasto", "Datos"])
+        if st.button("Salir"):
+            st.session_state['logged_in'] = False
+            st.rerun()
+
+    if nav == "Panel":
+        st.title("Panel Financiero (Nube)")
+        df = db_obtener(user['id'])
+        
+        ing = df[df['tipo']=='Ingreso']['monto'].sum() if not df.empty else 0
+        gas = df[df['tipo']=='Gasto']['monto'].sum() if not df.empty else 0
+        
+        c1, c2, c3 = st.columns(3)
+        c1.metric("Balance", f"${ing-gas:,.0f}")
+        c2.metric("Ingresos", f"${ing:,.0f}")
+        c3.metric("Gastos", f"${gas:,.0f}")
+        
+        if not df.empty:
+            st.plotly_chart(px.area(df, x='fecha', y='monto', color='tipo', color_discrete_map={'Ingreso':'#10B981','Gasto':'#EF4444'}), use_container_width=True)
+
+    elif nav in ["Ingreso", "Gasto"]:
+        st.header(f"Registrar {nav}")
+        m = st.number_input("Monto", step=100.0)
+        c1, c2 = st.columns(2)
+        f = c1.date_input("Fecha", datetime.now())
+        cat = c1.text_input("Categoría/Fuente", "General")
+        met = c2.selectbox("Método", ["Efectivo", "Tarjeta", "Digital"])
+        desc = c2.text_input("Notas")
+        
+        if st.button("Guardar en Nube", use_container_width=True):
+            db_insertar(user['id'], f, nav, cat, desc, m, met)
+            st.success("Sincronizado!")
+            time.sleep(1)
+            st.rerun()
+
+    elif nav == "Datos":
+        st.dataframe(db_obtener(user['id']), use_container_width=True)
+
+if st.session_state['logged_in']:
+    main_app()
+else:
+    login_register_page()

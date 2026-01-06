@@ -186,7 +186,14 @@ def login_register_page():
             nr = st.text_input("Palabra Clave (Recuperación)", key="s_r")
             if st.button("Crear Cuenta Cloud", use_container_width=True):
                 if db_crear_usuario(nu, np, nn, nr):
-                    st.success("Creado! Ingresa ahora.")
+                    st.success("¡Creado con éxito! Iniciando sesión...")
+                    time.sleep(1)
+                    # Auto-login
+                    user = db_login(nu, np)
+                    if user:
+                        st.session_state['logged_in'] = True
+                        st.session_state['user_info'] = user
+                        st.rerun()
                 else:
                     st.error("Usuario ocupado.")
 

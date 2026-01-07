@@ -129,9 +129,9 @@ def db_recuperar_password(email):
         # Nota: El usuario debe agregar esta URL en Supabase > Auth > URL Configuration > Redirect URLs
         url_app = "https://finance-cloud-ypzz4p5ezhnja3ns8cexek.streamlit.app"
         supabase.auth.reset_password_email(email, options={"redirect_to": url_app})
-        return True
-    except:
-        return False
+        return True, None
+    except Exception as e:
+        return False, str(e)
 
 def db_insertar(usuario_id, fecha, tipo, categoria, descripcion, monto, metodo):
     try:
@@ -327,11 +327,24 @@ def login_register_page():
         with tab_recover:
             st.write("")  # Espaciador
             ru = st.text_input("Correo para recuperar", key="r_u")
-            if st.button("Enviar Enlace", use_container_width=True):
-                if db_recuperar_password(ru):
+            
+            # Prevenir múltiples envíos con session state
+            if 'recovery_sent' not in st.session_state:
+                st.session_state['recovery_sent'] = False
+            
+            if st.button("Enviar Enlace", use_container_width=True, disabled=st.session_state['recovery_sent']):
+                success, error = db_recuperar_password(ru)
+                if success:
                     st.success("¡Enviado! Revisa tu bandeja de entrada.")
+                    st.session_state['recovery_sent'] = True
+                    st.info("Si no llega en 2 minutos, recarga la página y vuelve a intentarlo.")
                 else:
-                    st.error("Error al enviar.")
+                    st.error(f"Error al enviar: {error}")
+            
+            if st.session_state['recovery_sent']:
+                if st.button("Reintentar", use_container_width=True):
+                    st.session_state['recovery_sent'] = False
+                    st.rerun()
 
 def check_auth_callback():
     """Verifica si hay un código de autenticación en la URL (Link Mágico/Recuperación)"""

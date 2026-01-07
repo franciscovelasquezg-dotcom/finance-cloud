@@ -336,9 +336,17 @@ def main_app():
     
     # --- BARRA LATERAL ---
     with st.sidebar:
-        st.write(f"Hola, **{user.get('nombre', 'Usuario')}**")
+        # Avatar Automático (Generado por Iniciales)
+        nombre_user = user.get('nombre', 'Usuario')
+        # API de UI-Avatars (Estilo profesional y simple)
+        avatar_url = f"https://ui-avatars.com/api/?name={nombre_user}&background=3B82F6&color=fff&size=128&rounded=true&bold=true"
         
-        # SI ES EL JEFECITO (ADMIN)
+        col_av1, col_av2 = st.columns([1, 3])
+        with col_av1:
+            st.image(avatar_url, width=60)
+        with col_av2:
+            st.write(f"Hola,")
+            st.subheader(f"**{nombre_user.split(' ')[0]}**") # Mostrar solo primer nombre para que quepa bien
         if email_actual == ADMIN_EMAIL:
             st.info("👮 MODO ADMIN DETECTADO")
             modo = st.radio("Menú", ["Mi Panel", "ADMINISTRACIÓN"])
@@ -376,7 +384,7 @@ def main_app():
     # --- ENRUTAMIENTO ---
     if 'nav' in locals() and nav == "ADMIN":
         admin_panel_page()
-        if user.get('dias_restantes', 0) <= 5:
+    elif nav == "Panel":
             st.info(f"💡 Recordatorio: Tu membresía vence en {user.get('dias_restantes')} días. Asegura tu acceso continuo.")
 
         st.title("Tu Balance")

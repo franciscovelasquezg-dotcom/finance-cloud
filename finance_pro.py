@@ -72,7 +72,10 @@ def db_crear_usuario(email, password, nombre):
                 return True, None, "Cuenta creada. Por favor revisa tu correo para confirmar."
             
     except Exception as e:
-        return False, None, str(e)
+        msg = str(e)
+        if "User already registered" in msg or "already registered" in msg:
+            return False, None, "Este correo ya está registrado. Intenta iniciar sesión."
+        return False, None, f"Error: {msg}"
     return False, None, "Error desconocido"
 
 # ... (db_login se mantiene igual) ...
@@ -385,6 +388,7 @@ def main_app():
     if 'nav' in locals() and nav == "ADMIN":
         admin_panel_page()
     elif nav == "Panel":
+        if user.get('dias_restantes', 0) <= 5:
             st.info(f"💡 Recordatorio: Tu membresía vence en {user.get('dias_restantes')} días. Asegura tu acceso continuo.")
 
         st.title("Tu Balance")

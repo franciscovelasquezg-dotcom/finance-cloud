@@ -121,7 +121,10 @@ def db_login(email, password):
 
 def db_recuperar_password(email):
     try:
-        supabase.auth.reset_password_email(email)
+        # Enviar el Link Mágico apuntando a la APP REAL (no localhost)
+        # Nota: El usuario debe agregar esta URL en Supabase > Auth > URL Configuration > Redirect URLs
+        url_app = "https://finance-cloud-ypzz4p5ezhnja3ns8cexek.streamlit.app"
+        supabase.auth.reset_password_email(email, options={"redirect_to": url_app})
         return True
     except:
         return False

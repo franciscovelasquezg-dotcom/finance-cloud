@@ -79,6 +79,92 @@ def db_crear_usuario(email, password, nombre):
     return False, None, "Error desconocido"
 
 # ... (db_login se mantiene igual) ...
+def db_login(email, password):
+    try:
+        # Autenticar
+        res = supabase.auth.sign_in_with_password({
+            "email": email,
+            "password": password,
+        })
+        
+        if res.user:
+            # CHECK GATEKEEPER 
+            profile_res = supabase.table("perfiles").select("*").eq("id", res.user.id).execute()
+            
+            if profile_res.data:
+                profile = profile_res.data[0]
+                
+                # REVISAR VENCIMIENTO
+                if profile.get('subscription_end'):
+                    fin = datetime.fromisoformat(profile['subscription_end'].replace('Z', '+00:00'))
+                    ahora = datetime.now(fin.tzinfo)
+                    
+                    dias_restantes = (fin - ahora).days
+                    profile['dias_restantes'] = dias_restantes
+                    
+                    if dias_restantes < 0:
+                        return None, "🔒 TIEMPO AGOTADO: Tu periodo de prueba terminó. Por favor renueva tu plan."
+                
+                if not profile.get('activo', True):
+                    return None, "🔒 BLOQUEADO: Tu cuenta ha sido desactivada."
+                
+                # Inyectamos el email para que el frontend sepa si es admin
+                profile['email'] = res.user.email 
+                return profile, None 
+            else:
+                return {"id": res.user.id, "nombre": "Usuario", "email": res.user.email, "plan": "free", "dias_restantes": 30}, None
+                
+    except Exception as e:
+        return None, "Correo o contraseña incorrectos."
+    
+    return None, "Error de credenciales"
+
+def db_recuperar_password(email):
+    try:
+        supabase.auth.reset_password_email(email)
+        return True
+    except:
+        return False
+
+def db_insertar(usuario_id, fecha, tipo, categoria, descripcion, monto, metodo):
+    try:
+        data = {
+            "usuario_id": usuario_id,
+            "fecha": str(fecha),
+            "tipo": tipo,
+            "categoria": categoria,
+            "descripcion": descripcion,
+            "monto": float(monto),
+            "metodo": metodo
+        }
+        supabase.table("transacciones").insert(data).execute()
+        return True
+    except Exception as e:
+        st.error(f"Error conexión: {e}")
+        return False
+
+def db_obtener(usuario_id):
+    try:
+        response = supabase.table("transacciones").select("*").eq("usuario_id", usuario_id).order("fecha", desc=True).execute()
+        if response.data:
+            df = pd.DataFrame(response.data)
+            df['fecha'] = pd.to_datetime(df['fecha'])
+            return df
+    except Exception as e:
+        pass
+    return pd.DataFrame()
+
+def db_borrar(id_transaccion, usuario_id):
+    try:
+        supabase.table("transacciones").delete().eq("id", id_transaccion).eq("usuario_id", usuario_id).execute()
+    except:
+        pass
+
+# --- ESTADO Y RUTAS ---
+if 'logged_in' not in st.session_state:
+    st.session_state['logged_in'] = False
+if 'user_info' not in st.session_state:
+    st.session_state['user_info'] = None
 
 # --- ESTILOS VISUALES "PREMIUM" (CSS AVANZADO) ---
 st.markdown("""

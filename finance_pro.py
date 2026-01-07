@@ -544,26 +544,30 @@ def main_app():
         neto = ing - gas
         
         # Tarjetas Métricas Personalizadas (HTML + CSS Premium)
-        c1, c2, c3 = st.columns(3)
-        
+        # Pre-formatear valores para evitar errores de sintaxis en f-strings complejos
+        neto_fmt = "{:,.0f}".format(neto)
+        ing_fmt = "{:,.0f}".format(ing)
+        gas_fmt = "{:,.0f}".format(gas)
+        color_neto = '#10B981' if neto >= 0 else '#EF4444'
+
         c1.markdown(f"""
             <div class="metric-card">
                 <span style="color:#94A3B8; font-size:0.9rem;">Balance Neto</span>
-                <h2 style="color:{'#10B981' if neto>=0 else '#EF4444'}; margin:0;">${neto:,.0f}</h2>
+                <h2 style="color:{color_neto}; margin:0;">${neto_fmt}</h2>
             </div>
         """, unsafe_allow_html=True)
         
         c2.markdown(f"""
             <div class="metric-card">
                 <span style="color:#94A3B8; font-size:0.9rem;">Ingresos Totales</span>
-                <h3 style="color:#F8FAFC; margin:0;">${ing:,.0f}</h3>
+                <h3 style="color:#F8FAFC; margin:0;">${ing_fmt}</h3>
             </div>
         """, unsafe_allow_html=True)
         
         c3.markdown(f"""
             <div class="metric-card">
                 <span style="color:#94A3B8; font-size:0.9rem;">Gastos Totales</span>
-                <h3 style="color:#F8FAFC; margin:0;">${gas:,.0f}</h3>
+                <h3 style="color:#F8FAFC; margin:0;">${gas_fmt}</h3>
             </div>
         """, unsafe_allow_html=True)
         

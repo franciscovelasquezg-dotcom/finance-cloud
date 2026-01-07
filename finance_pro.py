@@ -280,25 +280,11 @@ def login_register_page():
             </div>
         """, unsafe_allow_html=True)
         
-        # Usamos Session State para controlar la vista activa (Login vs Registro) en lugar de tabs estáticos
-        if 'auth_mode' not in st.session_state:
-            st.session_state['auth_mode'] = 'login'
-
-        # Selector de modo personalizado
-        c_mode = st.columns(3)
-        if c_mode[0].button("Ingresar", use_container_width=True, type="primary" if st.session_state['auth_mode'] == 'login' else "secondary"):
-            st.session_state['auth_mode'] = 'login'
-            st.rerun()
-        if c_mode[1].button("Registrarse", use_container_width=True, type="primary" if st.session_state['auth_mode'] == 'register' else "secondary"):
-            st.session_state['auth_mode'] = 'register'
-            st.rerun()
-        if c_mode[2].button("Recuperar", use_container_width=True, type="primary" if st.session_state['auth_mode'] == 'recover' else "secondary"):
-            st.session_state['auth_mode'] = 'recover'
-            st.rerun()
+        # Tabs nativas de Streamlit para mejor indicación visual
+        tab_login, tab_register, tab_recover = st.tabs(["🔑 Ingresar", "✨ Registrarse", "🔄 Recuperar"])
         
-        st.write("---")
-
-        if st.session_state['auth_mode'] == 'login':
+        with tab_login:
+            st.write("")  # Espaciador
             u = st.text_input("Correo Electrónico", key="l_u")
             p = st.text_input("Contraseña", type="password", key="l_p")
             if st.button("Iniciar Sesión 🚀", use_container_width=True):
@@ -311,7 +297,7 @@ def login_register_page():
                 else:
                     st.error(error)
         
-        elif st.session_state['auth_mode'] == 'register':
+        with tab_register:
             st.info("💎 Prueba Premium Gratis por 30 Días.")
             nu = st.text_input("Correo Electrónico", key="s_u")
             nn = st.text_input("Nombre Completo", key="s_n")
@@ -334,12 +320,12 @@ def login_register_page():
                         st.info("✉️ Hemos enviado un correo de confirmación. Revisa tu bandeja de entrada (y Spam).")
                         st.caption("Redirigiendo al inicio de sesión en 3 segundos...")
                         time.sleep(3)
-                        st.session_state['auth_mode'] = 'login'
                         st.rerun()
                 else:
                     st.error(f"Error: {msg}")
 
-        elif st.session_state['auth_mode'] == 'recover':
+        with tab_recover:
+            st.write("")  # Espaciador
             ru = st.text_input("Correo para recuperar", key="r_u")
             if st.button("Enviar Enlace", use_container_width=True):
                 if db_recuperar_password(ru):
@@ -544,6 +530,8 @@ def main_app():
         neto = ing - gas
         
         # Tarjetas Métricas Personalizadas (HTML + CSS Premium)
+        c1, c2, c3 = st.columns(3)
+        
         # Pre-formatear valores para evitar errores de sintaxis en f-strings complejos
         neto_fmt = "{:,.0f}".format(neto)
         ing_fmt = "{:,.0f}".format(ing)

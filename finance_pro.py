@@ -59,7 +59,8 @@ def db_crear_usuario(email, password, nombre):
             "options": {
                 "data": {
                     "nombre": nombre
-                }
+                },
+                "email_redirect_to": "https://finance-cloud-ypzz4p5ezhnja3ns8cexek.streamlit.app"
             }
         })
         
@@ -115,6 +116,9 @@ def db_login(email, password):
                 return {"id": res.user.id, "nombre": "Usuario", "email": res.user.email, "plan": "free", "dias_restantes": 30}, None
                 
     except Exception as e:
+        msg = str(e)
+        if "Email not confirmed" in msg:
+            return None, "✉️ Tu correo no ha sido confirmado. Revisa tu bandeja de entrada (y Spam) y haz clic en el enlace."
         return None, "Correo o contraseña incorrectos."
     
     return None, "Error de credenciales"
@@ -327,10 +331,11 @@ def login_register_page():
                         st.rerun()
                     else:
                         st.success("¡Cuenta creada! ✅")
-                        st.warning("✉️ Revisa tu correo (y Spam) para confirmar tu cuenta y poder entrar.")
-                        if st.button("Ya confirmé mi correo, ir a Ingresar"):
-                            st.session_state['auth_mode'] = 'login'
-                            st.rerun()
+                        st.info("✉️ Hemos enviado un correo de confirmación. Revisa tu bandeja de entrada (y Spam).")
+                        st.caption("Redirigiendo al inicio de sesión en 3 segundos...")
+                        time.sleep(3)
+                        st.session_state['auth_mode'] = 'login'
+                        st.rerun()
                 else:
                     st.error(f"Error: {msg}")
 
@@ -341,6 +346,38 @@ def login_register_page():
                     st.success("¡Enviado! Revisa tu bandeja de entrada.")
                 else:
                     st.error("Error al enviar.")
+
+def check_auth_callback():
+    """Verifica si hay un código de autenticación en la URL (Link Mágico/Recuperación)"""
+    try:
+        # Detectar parámetros URL (Streamlit moderno usa st.query_params)
+        qp = st.query_params
+        code = qp.get("code")
+        
+        if code:
+            # Intercambiar código por sesión
+            res = supabase.auth.exchange_code_for_session({"auth_code": code})
+            if res.user:
+                # Login exitoso via link
+                st.session_state['logged_in'] = True
+                # Obtener perfil
+                profile, _ = db_login(res.user.email, "dummy") # Hack: db_login maneja perfil. Ideal refactor pero funciona.
+                # Mejor: obtener perfil directo para no requerir password
+                prof_res = supabase.table("perfiles").select("*").eq("id", res.user.id).execute()
+                if prof_res.data:
+                    st.session_state['user_info'] = prof_res.data[0]
+                    st.session_state['user_info']['email'] = res.user.email
+                
+                # Limpiar URL
+                st.query_params.clear()
+                st.success("¡Acceso concedido vía enlace seguro! 🔐")
+                time.sleep(1)
+                st.rerun()
+    except Exception as e:
+        st.error(f"Error procesando enlace: {e}")
+
+# --- INIT AUTH CHECK ---
+check_auth_callback()
 
 # --- CONFIGURACIÓN ADMIN Y SOPORTE ---
 ADMIN_EMAIL = "franciscovelasquezg@gmail.com"
@@ -461,8 +498,25 @@ def main_app():
                         </button>
                     </a>
                 """, unsafe_allow_html=True)
+                """, unsafe_allow_html=True)
             else:
                 st.success(f"✅ Quedan {dias} días")
+
+            st.divider()
+            
+            # CAMBIAR CONTRASEÑA (Para usuarios que entraron por recuperación)
+            with st.expander("🔐 Seguridad / Cambiar Clave"):
+                new_p1 = st.text_input("Nueva Contraseña", type="password", key="np1")
+                new_p2 = st.text_input("Confirmar Contraseña", type="password", key="np2")
+                if st.button("Actualizar Clave"):
+                    if new_p1 == new_p2 and len(new_p1) >= 6:
+                        try:
+                            supabase.auth.update_user({"password": new_p1})
+                            st.success("¡Contraseña actualizada!")
+                        except Exception as e:
+                            st.error(f"Error: {e}")
+                    else:
+                        st.error("Las contraseñas no coinciden o son muy cortas.")
 
             st.divider()
             nav = st.radio("", ["Panel", "Ingreso", "Gasto", "Datos"])

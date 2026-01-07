@@ -119,7 +119,7 @@ def db_login(email, password):
         msg = str(e)
         if "Email not confirmed" in msg:
             return None, "✉️ Tu correo no ha sido confirmado. Revisa tu bandeja de entrada (y Spam) y haz clic en el enlace."
-        return None, "Correo o contraseña incorrectos."
+        return None, f"Error: {msg}"  # Mostrar error exacto para depurar
     
     return None, "Error de credenciales"
 
@@ -356,6 +356,7 @@ def check_auth_callback():
         
         if code:
             # Intercambiar código por sesión
+            st.toast("🔑 Autenticando token de recuperación...", icon="🔄")
             res = supabase.auth.exchange_code_for_session({"auth_code": code})
             if res.user:
                 # Login exitoso via link

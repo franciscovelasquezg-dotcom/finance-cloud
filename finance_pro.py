@@ -52,141 +52,131 @@ def check_hashes(password, hashed_text):
 
 def db_crear_usuario(email, password, nombre):
     try:
-        # 1. Registrar en Supabase Auth
+        # 1. Registrar en Supabase Auth y pasar metadatos para el Trigger
         res = supabase.auth.sign_up({
             "email": email,
             "password": password,
+            "options": {
+                "data": {
+                    "nombre": nombre
+                }
+            }
         })
         
-        # 2. Si se crea, guardamos perfil con 30 días de regalo
+        # 2. Verificar éxito
         if res.user:
-            user_id = res.user.id
-            # Calcular fecha de vencimiento (Hoy + 30 días)
-            fin_demo = (datetime.now() + timedelta(days=30)).isoformat()
-            
-            supabase.table("perfiles").insert({
-                "id": user_id,
-                "nombre": nombre,
-                "plan": "trial",
-                "activo": True,
-                "subscription_end": fin_demo
-            }).execute()
-            return True, "Revisa tu correo para confirmar la cuenta."
-    except Exception as e:
-        return False, str(e)
-    return False, "Error desconocido"
-
-def db_login(email, password):
-    try:
-        # Autenticar
-        res = supabase.auth.sign_in_with_password({
-            "email": email,
-            "password": password,
-        })
-        
-        if res.user:
-            # CHECK GATEKEEPER 
-            profile_res = supabase.table("perfiles").select("*").eq("id", res.user.id).execute()
-            
-            if profile_res.data:
-                profile = profile_res.data[0]
-                
-                # REVISAR VENCIMIENTO
-                if profile.get('subscription_end'):
-                    fin = datetime.fromisoformat(profile['subscription_end'].replace('Z', '+00:00'))
-                    ahora = datetime.now(fin.tzinfo)
-                    
-                    dias_restantes = (fin - ahora).days
-                    profile['dias_restantes'] = dias_restantes
-                    
-                    if dias_restantes < 0:
-                        return None, "🔒 TIEMPO AGOTADO: Tu periodo de prueba terminó. Por favor renueva tu plan."
-                
-                if not profile.get('activo', True):
-                    return None, "🔒 BLOQUEADO: Tu cuenta ha sido desactivada."
-                    
-                return profile, None 
+            # Si Supabase devuelve una sesión (Email confirm desactivado), retornamos la sesión
+            if res.session:
+                return True, res.session, None
             else:
-                return {"id": res.user.id, "nombre": "Usuario", "plan": "free", "dias_restantes": 30}, None
-                
+                return True, None, "Cuenta creada. Por favor revisa tu correo para confirmar."
+            
     except Exception as e:
-        return None, "Correo o contraseña incorrectos."
-    
-    return None, "Error de credenciales"
+        return False, None, str(e)
+    return False, None, "Error desconocido"
 
-def db_recuperar_password(email):
-    try:
-        supabase.auth.reset_password_email(email)
-        return True
-    except:
-        return False
+# ... (db_login se mantiene igual) ...
 
-# ... (Funciones db_insertar, etc. se mantienen igual) ...
-def db_insertar(usuario_id, fecha, tipo, categoria, descripcion, monto, metodo):
-    try:
-        data = {
-            "usuario_id": usuario_id,
-            "fecha": str(fecha),
-            "tipo": tipo,
-            "categoria": categoria,
-            "descripcion": descripcion,
-            "monto": float(monto),
-            "metodo": metodo
-        }
-        supabase.table("transacciones").insert(data).execute()
-        return True
-    except Exception as e:
-        st.error(f"Error conexión: {e}")
-        return False
-
-def db_obtener(usuario_id):
-    try:
-        response = supabase.table("transacciones").select("*").eq("usuario_id", usuario_id).order("fecha", desc=True).execute()
-        if response.data:
-            df = pd.DataFrame(response.data)
-            df['fecha'] = pd.to_datetime(df['fecha'])
-            return df
-    except Exception as e:
-        pass
-    return pd.DataFrame()
-
-def db_borrar(id_transaccion, usuario_id):
-    try:
-        supabase.table("transacciones").delete().eq("id", id_transaccion).eq("usuario_id", usuario_id).execute()
-    except:
-        pass
-
-# --- ESTILOS CSS ---
+# --- ESTILOS VISUALES "PREMIUM" (CSS AVANZADO) ---
 st.markdown("""
     <style>
+    /* FUENTE Y FONDO */
     @import url('https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;700&display=swap');
-    html, body, [class*="css"] { font-family: 'Outfit', sans-serif; color: #E2E8F0; }
-    .stApp { background-color: #0F172A; }
-    .stTextInput input, .stNumberInput input, .stDateInput input, .stSelectbox > div > div {
-        background-color: #1E293B !important; color: white !important;
-        border: 1px solid #334155 !important; border-radius: 8px !important;
+    
+    html, body, [class*="css"] { 
+        font-family: 'Outfit', sans-serif; 
+        color: #E2E8F0; 
     }
+    
+    /* FONDO PRINCIPAL OSCURO AZULADO */
+    .stApp { 
+        background-color: #020617; /* Slate 950 */
+        background-image: 
+            radial-gradient(at 0% 0%, hsla(253,16%,7%,1) 0, transparent 50%), 
+            radial-gradient(at 50% 0%, hsla(225,39%,30%,1) 0, transparent 50%), 
+            radial-gradient(at 100% 0%, hsla(339,49%,30%,1) 0, transparent 50%);
+    }
+
+    /* TARJETAS DE MÉTRICAS (GLASSMORPHISM) */
+    div.metric-card {
+        background-color: rgba(30, 41, 59, 0.4); /* Slate 800 + Transparencia */
+        border: 1px solid rgba(148, 163, 184, 0.1);
+        border-radius: 16px;
+        padding: 20px;
+        backdrop-filter: blur(10px);
+        box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
+        transition: transform 0.2s ease, box-shadow 0.2s ease;
+    }
+    div.metric-card:hover {
+        transform: translateY(-2px);
+        box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.3);
+        border-color: rgba(96, 165, 250, 0.3); /* Azul claro */
+    }
+
+    /* INPUTS Y CAMPOS DE TEXTO ELEGANTES */
+    .stTextInput input, .stNumberInput input, .stDateInput input, .stSelectbox > div > div {
+        background-color: rgba(15, 23, 42, 0.6) !important; 
+        color: #F8FAFC !important;
+        border: 1px solid #334155 !important; 
+        border-radius: 12px !important;
+        padding: 10px !important;
+        transition: border-color 0.3s ease;
+    }
+    .stTextInput input:focus, .stNumberInput input:focus {
+        border-color: #60A5FA !important; /* Azul Focus */
+        box-shadow: 0 0 0 2px rgba(96, 165, 250, 0.2);
+    }
+
+    /* BOTONES GRADIENTES Y LUMINOSOS */
     .stButton > button {
         background: linear-gradient(135deg, #3B82F6 0%, #2563EB 100%);
-        color: white; border: none; padding: 0.6rem 1.2rem; font-weight: 600; border-radius: 8px;
+        color: white; 
+        border: none; 
+        padding: 0.75rem 1.5rem; 
+        font-weight: 600; 
+        letter-spacing: 0.5px;
+        border-radius: 12px;
+        width: 100%;
+        transition: all 0.3s ease;
+        box-shadow: 0 4px 6px -1px rgba(37, 99, 235, 0.3);
     }
-    .metric-container { background-color: #1E293B; border-radius: 12px; padding: 24px; border: 1px solid #334155; }
+    .stButton > button:hover {
+        background: linear-gradient(135deg, #2563EB 0%, #1D4ED8 100%);
+        transform: translateY(-1px);
+        box-shadow: 0 8px 10px -1px rgba(37, 99, 235, 0.4);
+    }
+
+    /* PESTAÑAS Y EXPANSORES */
+    .stTabs [data-baseweb="tab-list"] {
+        background-color: rgba(30, 41, 59, 0.3);
+        border-radius: 10px;
+        padding: 5px;
+        gap: 5px;
+    }
+    .stTabs [data-baseweb="tab"] {
+        border-radius: 8px;
+        color: #94A3B8;
+    }
+    .stTabs [aria-selected="true"] {
+        background-color: #1E293B;
+        color: #FFFFFF;
+        font-weight: bold;
+    }
+
+    /* BARRA LATERAL */
+    section[data-testid="stSidebar"] {
+        background-color: #020617;
+        border-right: 1px solid rgba(148, 163, 184, 0.1);
+    }
     </style>
 """, unsafe_allow_html=True)
-
-# --- ESTADO Y RUTAS ---
-
-if 'logged_in' not in st.session_state:
-    st.session_state['logged_in'] = False
-if 'user_info' not in st.session_state:
-    st.session_state['user_info'] = None
 
 def login_register_page():
     col1, col2, col3 = st.columns([1, 2, 1])
     with col2:
         st.markdown(f"""
             <div style="text-align: center; margin-bottom: 2rem;">
-                <h1 style="color: #60A5FA; margin-bottom: 0;">FinancePro <span style="font-size:0.5em">�</span></h1>
+                <h1 style="color: #60A5FA; margin-bottom: 0;">FinancePro <span style="font-size:0.5em">💎</span></h1>
                 <p style="color: #94A3B8;">Professional Cloud Suite</p>
                 <div style="background: #1e293b; padding: 10px; border-radius: 8px; font-size: 0.8rem; margin-top: 10px; border: 1px solid #334155;">
                     🌍 <b>Estado:</b> <span style="color: #10B981;">Online (Nube Global)</span>
@@ -194,36 +184,65 @@ def login_register_page():
             </div>
         """, unsafe_allow_html=True)
         
-        t1, t2, t3 = st.tabs(["Ingresar", "Registro", "Recuperar"])
+        # Usamos Session State para controlar la vista activa (Login vs Registro) en lugar de tabs estáticos
+        if 'auth_mode' not in st.session_state:
+            st.session_state['auth_mode'] = 'login'
+
+        # Selector de modo personalizado
+        c_mode = st.columns(3)
+        if c_mode[0].button("Ingresar", use_container_width=True, type="primary" if st.session_state['auth_mode'] == 'login' else "secondary"):
+            st.session_state['auth_mode'] = 'login'
+            st.rerun()
+        if c_mode[1].button("Registrarse", use_container_width=True, type="primary" if st.session_state['auth_mode'] == 'register' else "secondary"):
+            st.session_state['auth_mode'] = 'register'
+            st.rerun()
+        if c_mode[2].button("Recuperar", use_container_width=True, type="primary" if st.session_state['auth_mode'] == 'recover' else "secondary"):
+            st.session_state['auth_mode'] = 'recover'
+            st.rerun()
         
-        with t1:
+        st.write("---")
+
+        if st.session_state['auth_mode'] == 'login':
             u = st.text_input("Correo Electrónico", key="l_u")
             p = st.text_input("Contraseña", type="password", key="l_p")
-            if st.button("Iniciar Sesión", use_container_width=True):
+            if st.button("Iniciar Sesión 🚀", use_container_width=True):
                 user, error = db_login(u, p)
                 if user:
                     st.success(f"Bienvenido de nuevo, {user.get('nombre', 'Usuario')}")
-                    time.sleep(1)
                     st.session_state['logged_in'] = True
                     st.session_state['user_info'] = user
                     st.rerun()
                 else:
                     st.error(error)
         
-        with t2:
-            st.info("Prueba Premium Gratis por 30 Días.")
+        elif st.session_state['auth_mode'] == 'register':
+            st.info("💎 Prueba Premium Gratis por 30 Días.")
             nu = st.text_input("Correo Electrónico", key="s_u")
             nn = st.text_input("Nombre Completo", key="s_n")
             np = st.text_input("Contraseña", type="password", help="Mínimo 6 caracteres", key="s_p")
             
-            if st.button("Comenzar Prueba Gratis", use_container_width=True):
-                ok, msg = db_crear_usuario(nu, np, nn)
+            if st.button("Comenzar Prueba Gratis ✨", use_container_width=True):
+                ok, session, msg = db_crear_usuario(nu, np, nn)
                 if ok:
-                    st.success("¡Cuenta creada! Revisa tu correo para confirmar.")
+                    if session:
+                        # Auto-Login si Supabase ya nos dio sesión
+                        st.success("¡Cuenta creada! Entrando...")
+                        # Necesitamos obtener el perfil completo aunque tengamos la sesión
+                        user_profile, _ = db_login(nu, np) 
+                        st.session_state['logged_in'] = True
+                        st.session_state['user_info'] = user_profile
+                        time.sleep(1)
+                        st.rerun()
+                    else:
+                        st.success("¡Cuenta creada! ✅")
+                        st.warning("✉️ Revisa tu correo (y Spam) para confirmar tu cuenta y poder entrar.")
+                        if st.button("Ya confirmé mi correo, ir a Ingresar"):
+                            st.session_state['auth_mode'] = 'login'
+                            st.rerun()
                 else:
                     st.error(f"Error: {msg}")
 
-        with t3:
+        elif st.session_state['auth_mode'] == 'recover':
             ru = st.text_input("Correo para recuperar", key="r_u")
             if st.button("Enviar Enlace", use_container_width=True):
                 if db_recuperar_password(ru):
@@ -231,25 +250,122 @@ def login_register_page():
                 else:
                     st.error("Error al enviar.")
 
+# --- CONFIGURACIÓN ADMIN Y SOPORTE ---
+ADMIN_EMAIL = "franciscovelasquezg@gmail.com"
+# IMPORTANTE: CAMBIE ESTE NÚMERO POR EL SUYO (Formato internacional sin +)
+WHATSAPP_NUMERO = "56940928228" 
+
+def admin_panel_page():
+    st.title("🕵️‍♂️ Panel de Super-Admin")
+    st.warning("⚠️ Zona de Control Maestra")
+    
+    # Obtener todos los perfiles
+    try:
+        res = supabase.table("perfiles").select("*").order("fecha_registro", desc=True).execute()
+        users = res.data
+        
+        for u in users:
+            with st.expander(f"{u.get('nombre')} ({u.get('email')}) - {u.get('plan')}"):
+                c1, c2, c3 = st.columns(3)
+                
+                # Info
+                activo = u.get('activo', True)
+                estado_str = "🟢 Activo" if activo else "🔴 Bloqueado"
+                c1.write(f"Estado: **{estado_str}**")
+                
+                vence = u.get('subscription_end')
+                c1.write(f"Vence: `{vence}`")
+                
+                # Acciones
+                with c2:
+                    if st.button("📅 Extender 30 días", key=f"ext_{u['id']}"):
+                        nuevo_venc = (datetime.now() + timedelta(days=30)).isoformat()
+                        supabase.table("perfiles").update({"subscription_end": nuevo_venc, "activo": True}).eq("id", u['id']).execute()
+                        st.success("¡Renovado!")
+                        time.sleep(1)
+                        st.rerun()
+
+                with c3:
+                    if activo:
+                        if st.button("🛑 Bloquear Acceso", key=f"blk_{u['id']}"):
+                            supabase.table("perfiles").update({"activo": False}).eq("id", u['id']).execute()
+                            st.rerun()
+                    else:
+                        if st.button("✅ Desbloquear", key=f"unblk_{u['id']}"):
+                            supabase.table("perfiles").update({"activo": True}).eq("id", u['id']).execute()
+                            st.rerun()
+        
+        st.divider()
+        st.subheader("🗑️ Zona de Limpieza")
+        st.caption("Eliminar usuarios vencidos hace más de 15 días para liberar espacio.")
+        
+        if st.button("Buscar Usuarios para Eliminar"):
+            candidatos = []
+            for u in users:
+                vence = u.get('subscription_end')
+                if vence:
+                    fin = datetime.fromisoformat(vence.replace('Z', '+00:00'))
+                    dias_pasados = (datetime.now(fin.tzinfo) - fin).days
+                    if dias_pasados > 15:
+                        candidatos.append(u)
+            
+            if candidatos:
+                st.error(f"⚠️ Se encontraron {len(candidatos)} usuarios vencidos hace >15 días.")
+                for cand in candidatos:
+                    st.write(f"- {cand['nombre']} (Venció hace {dias_pasados} días)")
+                
+                if st.button("🔥 ELIMINAR DATOS PERMANENTEMENTE"):
+                    for cand in candidatos:
+                        # Borrar transacciones primero (por seguridad de llaves foráneas)
+                        supabase.table("transacciones").delete().eq("usuario_id", cand['id']).execute()
+                        # Borrar perfil
+                        supabase.table("perfiles").delete().eq("id", cand['id']).execute()
+                        # Nota: El usuario de Auth queda, pero sin perfil no puede entrar ni ocupa espacio real.
+                    st.success("Limpieza completada.")
+                    time.sleep(2)
+                    st.rerun()
+            else:
+                st.info("Todo limpio. No hay usuarios tan antiguos para borrar.")
+
+    except Exception as e:
+        st.error(f"Error al cargar usuarios: {e}")
+
 def main_app():
     user = st.session_state['user_info']
+    email_actual = user.get('email', '') # Necesitamos el email en el login
     
-    # --- BARRA LATERAL CON INFORMACIÓN DE LA SUSCRIPCIÓN ---
+    # --- BARRA LATERAL ---
     with st.sidebar:
         st.write(f"Hola, **{user.get('nombre', 'Usuario')}**")
         
-        dias = user.get('dias_restantes', 30)
-        
-        if dias > 5:
-            st.success(f"✅ Membresía Activa\n\nQuedan {dias} días")
-        elif dias >= 0:
-            st.warning(f"⚠️ **Atención**: Quedan solo {dias} días de prueba.")
-            st.markdown("[Renovar Ahora](#)") # Aquí pondríamos el link de pago
+        # SI ES EL JEFECITO (ADMIN)
+        if email_actual == ADMIN_EMAIL:
+            st.info("👮 MODO ADMIN DETECTADO")
+            modo = st.radio("Menú", ["Mi Panel", "ADMINISTRACIÓN"])
+            if modo == "ADMINISTRACIÓN":
+                nav = "ADMIN"
+            else:
+                nav = st.radio("", ["Panel", "Ingreso", "Gasto", "Datos"])
         else:
-            st.error("⛔ Plan Vencido")
+            # SI ES UN MORTAL (CLIENTE)
+            dias = user.get('dias_restantes', 30)
+            if dias <= 5:
+                st.warning(f"⚠️ Quedan {dias} días")
+                # Botón de WhatsApp
+                msg = f"Hola, quiero renovar mi plan en FinancePro. Mi correo es: {email_actual}"
+                link_wa = f"https://wa.me/{WHATSAPP_NUMERO}?text={msg.replace(' ', '%20')}"
+                st.markdown(f"""
+                    <a href="{link_wa}" target="_blank">
+                        <button style="width:100%; border:none; background-color:#25D366; color:white; padding:10px; border-radius:5px; font-weight:bold;">
+                            💬 Renovar por WhatsApp
+                        </button>
+                    </a>
+                """, unsafe_allow_html=True)
+            else:
+                st.success(f"✅ Quedan {dias} días")
 
-        st.divider()
-        nav = st.radio("", ["Panel", "Ingreso", "Gasto", "Datos"])
+            st.divider()
+            nav = st.radio("", ["Panel", "Ingreso", "Gasto", "Datos"])
         
         st.divider()
         if st.button("Cerrar Sesión"):
@@ -257,26 +373,56 @@ def main_app():
             st.session_state['logged_in'] = False
             st.rerun()
 
-    # --- CONTENIDO PRINCIPAL ---
-    if nav == "Panel":
+    # --- ENRUTAMIENTO ---
+    if 'nav' in locals() and nav == "ADMIN":
+        admin_panel_page()
         if user.get('dias_restantes', 0) <= 5:
             st.info(f"💡 Recordatorio: Tu membresía vence en {user.get('dias_restantes')} días. Asegura tu acceso continuo.")
 
         st.title("Tu Balance")
+        st.caption("Resumen financiero en tiempo real.")
+        
         df = db_obtener(user['id'])
         
         ing = df[df['tipo']=='Ingreso']['monto'].sum() if not df.empty else 0
         gas = df[df['tipo']=='Gasto']['monto'].sum() if not df.empty else 0
+        neto = ing - gas
         
+        # Tarjetas Métricas Personalizadas (HTML + CSS Premium)
         c1, c2, c3 = st.columns(3)
-        c1.metric("Neto", f"${ing-gas:,.0f}")
-        c2.metric("Entradas", f"${ing:,.0f}")
-        c3.metric("Salidas", f"${gas:,.0f}")
+        
+        c1.markdown(f"""
+            <div class="metric-card">
+                <span style="color:#94A3B8; font-size:0.9rem;">Balance Neto</span>
+                <h2 style="color:{'#10B981' if neto>=0 else '#EF4444'}; margin:0;">${neto:,.0f}</h2>
+            </div>
+        """, unsafe_allow_html=True)
+        
+        c2.markdown(f"""
+            <div class="metric-card">
+                <span style="color:#94A3B8; font-size:0.9rem;">Ingresos Totales</span>
+                <h3 style="color:#F8FAFC; margin:0;">${ing:,.0f}</h3>
+            </div>
+        """, unsafe_allow_html=True)
+        
+        c3.markdown(f"""
+            <div class="metric-card">
+                <span style="color:#94A3B8; font-size:0.9rem;">Gastos Totales</span>
+                <h3 style="color:#F8FAFC; margin:0;">${gas:,.0f}</h3>
+            </div>
+        """, unsafe_allow_html=True)
+        
+        st.write("") # Espaciador
         
         if not df.empty:
-            st.plotly_chart(px.area(df, x='fecha', y='monto', color='tipo', color_discrete_map={'Ingreso':'#10B981','Gasto':'#EF4444'}), use_container_width=True)
+            # Gráfico con fondo transparente
+            fig = px.area(df, x='fecha', y='monto', color='tipo', 
+                          color_discrete_map={'Ingreso':'#10B981','Gasto':'#EF4444'},
+                          title="Evolución Financiera")
+            fig.update_layout(paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)', font_color='#94A3B8')
+            st.plotly_chart(fig, use_container_width=True)
         else:
-            st.info("¡Bienvenido! Empieza registrando tus ingresos.")
+            st.info("¡Bienvenido! Empieza registrando tus ingresos en el menú lateral.")
 
     elif nav in ["Ingreso", "Gasto"]:
         st.header(f"Registrar {nav}")

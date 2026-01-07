@@ -498,7 +498,6 @@ def main_app():
                         </button>
                     </a>
                 """, unsafe_allow_html=True)
-                """, unsafe_allow_html=True)
             else:
                 st.success(f"✅ Quedan {dias} días")
 

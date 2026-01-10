@@ -6,6 +6,32 @@ import time
 import socket
 import hashlib
 from supabase import create_client, Client
+from twilio.rest import Client as TwilioClient
+
+# --- NOTIFICACIONES TWILIO (WHATSAPP) ---
+def enviar_alerta_whatsapp(mensaje):
+    """Envía alerta WhatsApp usando Credenciales Seguras de Streamlit"""
+    try:
+        if "twilio" in st.secrets:
+            # Obtener credenciales de secretos (Local o Nube)
+            sid = st.secrets["twilio"]["ACCOUNT_SID"]
+            token = st.secrets["twilio"]["AUTH_TOKEN"]
+            from_wa = st.secrets["twilio"]["FROM_NUMBER"]
+            to_wa = st.secrets["twilio"]["TO_NUMBER"]
+            
+            # Solo enviar si no son los placeholders
+            if "TU_ACCOUNT" not in sid:
+                client = TwilioClient(sid, token)
+                msg = client.messages.create(
+                    body=mensaje,
+                    from_=from_wa,
+                    to=to_wa
+                )
+                return True, msg.sid
+        return False, "No configurado"
+    except Exception as e:
+        print(f"Error Twilio: {e}")
+        return False, str(e)
 
 # --- CONFIGURACIÓN SUPABASE ---
 # ESTAS CREDENCIALES SON SEGURAS EN EL CLIENTE PORQUE SON DE TIPO "ANON" (PÚBLICAS)
@@ -25,6 +51,39 @@ st.set_page_config(
     layout="wide",
     initial_sidebar_state="collapsed"
 )
+
+# --- CONFIGURACIÓN ADMIN ---
+ADMIN_EMAIL = "franciscovelasquezg@gmail.com"
+WHATSAPP_NUMERO = "56956082703"
+
+def db_admin_get_users():
+    """Obtiene todos los usuarios para el panel admin"""
+    try:
+        response = supabase.table("perfiles").select("*").execute()
+        return response.data
+    except Exception as e:
+        return []
+
+
+
+def db_admin_update_subscription(user_id, days):
+    """Actualiza la suscripción de un usuario"""
+    try:
+        new_date = (datetime.now() + timedelta(days=days)).isoformat()
+        supabase.table("perfiles").update({"subscription_end": new_date, "plan": "premium"}).eq("id", user_id).execute()
+        return True
+    except:
+        return False
+
+def db_admin_block_user(user_id):
+    """Bloquea un usuario (fecha pasada)"""
+    try:
+        # Fecha en el pasado bloquea el acceso
+        past_date = (datetime.now() - timedelta(days=1)).isoformat()
+        supabase.table("perfiles").update({"subscription_end": past_date, "plan": "blocked"}).eq("id", user_id).execute()
+        return True
+    except:
+        return False
 
 # --- UTILIDADES DE RED ---
 def get_ip_address():
@@ -104,7 +163,12 @@ def db_login(email, password):
                     profile['dias_restantes'] = dias_restantes
                     
                     if dias_restantes < 0:
-                        return None, "🔒 TIEMPO AGOTADO: Tu periodo de prueba terminó. Por favor renueva tu plan."
+                        # MODIFICACION: Permitimos entrar pero marcamos como vencido para modo "solo lectura"
+                        profile['expired'] = True
+                        # No retornamos error, dejamos pasar
+                        # return None, "🔒 TIEMPO AGOTADO: Tu periodo de prueba terminó. Por favor renueva tu plan."
+                    else:
+                        profile['expired'] = False
                 
                 if not profile.get('activo', True):
                     return None, "🔒 BLOQUEADO: Tu cuenta ha sido desactivada."
@@ -264,6 +328,92 @@ st.markdown("""
         background-color: #020617;
         border-right: 1px solid rgba(148, 163, 184, 0.1);
     }
+    
+    /* ═══════════════════════════════════════════════════════════════
+       FIX URGENTE: SELECTBOX - Texto visible y tamaño correcto
+       ═══════════════════════════════════════════════════════════════ */
+    
+    /* Selectbox - Contenedor principal MÁS ALTO */
+    div[data-baseweb="select"] {
+        min-height: 45px !important;
+    }
+    
+    /* Selectbox - Input principal con fondo oscuro y texto blanco */
+    div[data-baseweb="select"] > div {
+        background-color: #1E293B !important;
+        border: 2px solid #334155 !important;
+        color: #FFFFFF !important;
+        min-height: 45px !important;
+        padding: 8px 12px !important;
+        font-size: 14px !important;
+    }
+    
+    /* Selectbox - Texto seleccionado BLANCO Y VISIBLE */
+    div[data-baseweb="select"] span {
+        color: #FFFFFF !important;
+        font-weight: 500 !important;
+        font-size: 14px !important;
+        line-height: 1.5 !important;
+    }
+    
+    /* Selectbox - Input cuando está abierto */
+    div[data-baseweb="select"] input {
+        color: #FFFFFF !important;
+        font-size: 14px !important;
+    }
+    
+    /* Selectbox - Flecha del dropdown */
+    div[data-baseweb="select"] svg {
+        fill: #94A3B8 !important;
+    }
+    
+    /* Dropdown menu - Fondo oscuro */
+    div[data-baseweb="popover"] {
+        background-color: #1E293B !important;
+        border: 2px solid #334155 !important;
+    }
+    
+    /* Opciones del menú - Texto blanco */
+    ul[role="listbox"] li {
+        color: #FFFFFF !important;
+        background-color: #1E293B !important;
+        padding: 10px 15px !important;
+        font-size: 14px !important;
+    }
+    
+    /* Opción al pasar el mouse - Azul claro */
+    ul[role="listbox"] li:hover {
+        background-color: #334155 !important;
+        color: #60A5FA !important;
+    }
+    
+    /* Opción seleccionada - Azul */
+    ul[role="listbox"] li[aria-selected="true"] {
+        background-color: #3B82F6 !important;
+        color: #FFFFFF !important;
+    }
+    
+    /* INPUTS MEJORADOS - Tamaño y contraste */
+    input[type="number"], input[type="text"], input[type="date"], textarea {
+        color: #FFFFFF !important;
+        background-color: #1E293B !important;
+        border: 2px solid #334155 !important;
+        font-size: 14px !important;
+        min-height: 45px !important;
+        padding: 8px 12px !important;
+    }
+    
+    input::placeholder, textarea::placeholder {
+        color: #64748B !important;
+        font-size: 13px !important;
+    }
+    
+    /* Labels más visibles */
+    label {
+        color: #E2E8F0 !important;
+        font-size: 14px !important;
+        font-weight: 500 !important;
+    }
     </style>
 """, unsafe_allow_html=True)
 
@@ -386,27 +536,111 @@ WHATSAPP_NUMERO = "56940928228"
 
 def admin_panel_page():
     st.title("🕵️‍♂️ Panel de Super-Admin")
-    st.warning("⚠️ Zona de Control Maestra")
+    # st.warning("⚠️ Zona de Control Maestra") # Eliminado para limpieza visual
     
     # Obtener todos los perfiles
     try:
         res = supabase.table("perfiles").select("*").order("fecha_registro", desc=True).execute()
         users = res.data
         
+        # --- NUEVO DASHBOARD SAAS ---
+        total_users = len(users)
+        active_users = sum(1 for u in users if u.get('activo', True))
+        ingresos_estimados = active_users * 2490 
+        
+        st.markdown("### 📊 Métricas de Negocio")
+        m1, m2, m3 = st.columns(3)
+        
+        m1.markdown(f"""
+            <div class="metric-card">
+                <span style="color:#94A3B8;">👥 Usuarios Totales</span>
+                <h3 style="color:#F8FAFC; margin:0;">{total_users}</h3>
+            </div>
+        """, unsafe_allow_html=True)
+        
+        m2.markdown(f"""
+            <div class="metric-card">
+                <span style="color:#94A3B8;">🟢 Clientes Activos</span>
+                <h3 style="color:#10B981; margin:0;">{active_users}</h3>
+            </div>
+        """, unsafe_allow_html=True)
+        
+        m3.markdown(f"""
+            <div class="metric-card">
+                <span style="color:#94A3B8;">💰 Ingresos (Est.)</span>
+                <h3 style="color:#60A5FA; margin:0;">${ingresos_estimados:,.0f}</h3>
+            </div>
+        """, unsafe_allow_html=True)
+        
+        st.divider()
+        st.subheader("👥 Gestión de Usuarios")
+        
         for u in users:
-            with st.expander(f"{u.get('nombre')} ({u.get('email')}) - {u.get('plan')}"):
+            # --- LÓGICA SEMÁFORO Y PAGO ---
+            activo = u.get('activo', True)
+            pago_pendiente = u.get('pago_pendiente', False)
+            
+            color_estado = "⚪"
+            dias_msg = "Indefinido"
+            
+            # Prioridad 1: Pago Reportado (Azul)
+            if pago_pendiente:
+                color_estado = "🔵 PAGO REPORTADO"
+            # Prioridad 2: Estado Cuenta
+            elif not activo:
+                color_estado = "⚫ (Bloqueado)"
+            elif u.get('subscription_end'):
+                try:
+                    fin = datetime.fromisoformat(u['subscription_end'].replace('Z', '+00:00'))
+                    ahora = datetime.now(fin.tzinfo)
+                    dias = (fin - ahora).days
+                    dias_msg = f"{dias} días"
+                    
+                    if dias < 0:
+                        color_estado = "🔴 Vencido"
+                    elif dias < 5:
+                        color_estado = "🔴 Vence pronto"
+                    elif dias < 10:
+                        color_estado = "🟡 Atención"
+                    else:
+                        color_estado = "🟢 OK"
+                except:
+                    pass
+            else:
+                color_estado = "🟢 (Sin fecha)"
+            
+            # Header del Expander Visual
+            header_text = f"{color_estado} | {u.get('nombre')} | {dias_msg}"
+            
+            with st.expander(header_text):
                 c1, c2, c3 = st.columns(3)
                 
                 # Info
-                activo = u.get('activo', True)
                 estado_str = "🟢 Activo" if activo else "🔴 Bloqueado"
+                if pago_pendiente:
+                    c1.info(f"💰 **¡Usuario dice que PAGÓ!**")
+                
                 c1.write(f"Estado: **{estado_str}**")
+                c1.write(f"Email: `{u.get('email')}`")
                 
                 vence = u.get('subscription_end')
                 c1.write(f"Vence: `{vence}`")
                 
                 # Acciones
                 with c2:
+                    if pago_pendiente:
+                         if st.button("✅ CONFIRMAR PAGO (Renovar)", key=f"payconf_{u['id']}"):
+                            nuevo_venc = (datetime.now() + timedelta(days=30)).isoformat()
+                            supabase.table("perfiles").update({
+                                "subscription_end": nuevo_venc, 
+                                "activo": True,
+                                "pago_pendiente": False
+                            }).eq("id", u['id']).execute()
+                            st.balloons()
+                            st.success("¡Pago confirmado y cuenta renovada!")
+                            time.sleep(1.5)
+                            st.rerun()
+
                     if st.button("📅 Extender 30 días", key=f"ext_{u['id']}"):
                         nuevo_venc = (datetime.now() + timedelta(days=30)).isoformat()
                         supabase.table("perfiles").update({"subscription_end": nuevo_venc, "activo": True}).eq("id", u['id']).execute()
@@ -491,13 +725,27 @@ def main_app():
                 # Botón de WhatsApp
                 msg = f"Hola, quiero renovar mi plan en FinancePro. Mi correo es: {email_actual}"
                 link_wa = f"https://wa.me/{WHATSAPP_NUMERO}?text={msg.replace(' ', '%20')}"
-                st.markdown(f"""
-                    <a href="{link_wa}" target="_blank">
-                        <button style="width:100%; border:none; background-color:#25D366; color:white; padding:10px; border-radius:5px; font-weight:bold;">
-                            💬 Renovar por WhatsApp
-                        </button>
-                    </a>
-                """, unsafe_allow_html=True)
+                
+                # Stacked buttons for sidebar (better for mobile/narrow width)
+                st.link_button("💬 Pagar (WhatsApp)", link_wa, use_container_width=True, type="primary")
+                
+                # Botón para reportar pago
+                if st.button("💰 Ya Pagué (Avisar)", use_container_width=True):
+                    try:
+                        # 1. Marcar en base de datos
+                        supabase.table("perfiles").update({"pago_pendiente": True}).eq("id", user['id']).execute()
+                        
+                        # 2. Enviar WhatsApp (Si está configurado)
+                        msg_admin = f"🔔 PAGO REPORTADO\nUsuario: {email_actual}\nNombre: {nombre_user}"
+                        ok, err = enviar_alerta_whatsapp(msg_admin)
+                        
+                        if ok:
+                            st.toast("Aviso enviado a Administración. Te confirmaremos pronto.", icon="✅")
+                            time.sleep(2)
+                        else:
+                            st.error(f"No se pudo enviar el WhatsApp: {err}")
+                    except Exception as e:
+                        st.error(f"Error al avisar: {e}")
             else:
                 st.success(f"✅ Quedan {dias} días")
 
@@ -527,11 +775,40 @@ def main_app():
             st.rerun()
 
     # --- ENRUTAMIENTO ---
+    # Verificar si está vencido
+    if user.get('expired', False) or user.get('dias_restantes', 0) < 0:
+        st.error("🔒 MODO LECTURA: Tu plan ha vencido. No puedes agregar, editar ni descargar datos.")
+        # Banner de pago prominente
+        msg = f"Hola, deseo renovar mi plan FinancePro. Mi correo: {email_actual}"
+        link_wa = f"https://wa.me/{WHATSAPP_NUMERO}?text={msg.replace(' ', '%20')}"
+        colp1, colp2 = st.columns([1, 1])
+        with colp1:
+            st.link_button("💳 RENOVAR AHORA (WhatsApp)", link_wa, type="primary", use_container_width=True)
+            
+        with colp2:
+             if st.button("💰 Ya Pagué (Desbloquear)", key="pay_unlock", use_container_width=True):
+                try:
+                    # SELECT para ver si el update funcionó (Fix RLS silencioso)
+                    data = supabase.table("perfiles").update({"pago_pendiente": True}).eq("id", user['id']).execute()
+                    
+                    if not data.data:
+                         st.error("⚠️ Error de Permisos (RLS): No se pudo actualizar tu estado. Contacta al soporte.")
+                    else:
+                        msg_admin = f"🔔 PAGO (DESBLOQUEO)\nUsuario: {email_actual}\nNombre: {nombre_user}"
+                        ok, err = enviar_alerta_whatsapp(msg_admin)
+                        if ok:
+                            st.success(f"✅ ¡Solicitud Enviada! (ID: {err})")
+                        else:
+                            st.error(f"Error Twilio: {err}")
+                except Exception as e:
+                    st.error(f"Error al enviar: {e}")
+        st.divider()
+
     if 'nav' in locals() and nav == "ADMIN":
         admin_panel_page()
     elif nav == "Panel":
-        if user.get('dias_restantes', 0) <= 5:
-            st.info(f"💡 Recordatorio: Tu membresía vence en {user.get('dias_restantes')} días. Asegura tu acceso continuo.")
+        if not user.get('expired', False) and user.get('dias_restantes', 0) <= 5:
+             st.info(f"💡 Recordatorio: Tu membresía vence en {user.get('dias_restantes')} días.")
 
         st.title("Tu Balance")
         st.caption("Resumen financiero en tiempo real.")
@@ -576,32 +853,178 @@ def main_app():
         
         if not df.empty:
             # Gráfico con fondo transparente
+            # Gráfico con fondo transparente
             fig = px.area(df, x='fecha', y='monto', color='tipo', 
                           color_discrete_map={'Ingreso':'#10B981','Gasto':'#EF4444'},
                           title="Evolución Financiera")
             fig.update_layout(paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)', font_color='#94A3B8')
             st.plotly_chart(fig, use_container_width=True)
+            
+            st.divider()
+            
+            # SECCIÓN DE ANÁLISIS DE GASTOS
+            st.subheader("🍰 Distribución de Gastos")
+            
+            # Filtrar solo gastos para el análisis
+            df_gastos = df[df['tipo'] == 'Gasto']
+            
+            if not df_gastos.empty:
+                # Agrupar por categoría
+                gastos_por_cat = df_gastos.groupby('categoria')['monto'].sum().reset_index()
+                
+                c_pie, c_bar = st.columns(2)
+                
+                with c_pie:
+                    st.caption("Por Porcentaje (%)")
+                    fig_pie = px.pie(gastos_por_cat, values='monto', names='categoria', 
+                                     color_discrete_sequence=px.colors.sequential.RdBu,
+                                     hole=0.4)
+                    fig_pie.update_traces(textinfo='percent+label', textposition='inside')
+                    fig_pie.update_layout(showlegend=False, 
+                                          paper_bgcolor='rgba(0,0,0,0)', 
+                                          plot_bgcolor='rgba(0,0,0,0)', 
+                                          font_color='#94A3B8',
+                                          margin=dict(t=0, b=0, l=0, r=0))
+                    st.plotly_chart(fig_pie, use_container_width=True)
+                
+                with c_bar:
+                    st.caption("Por Valor ($)")
+                    fig_bar = px.bar(gastos_por_cat, x='categoria', y='monto', text='monto',
+                                     color='monto', color_continuous_scale='Reds')
+                    
+                    # Formato de texto en las barras (ej: $50k)
+                    fig_bar.update_traces(texttemplate='$%{text:.0f}', textposition='outside')
+                    fig_bar.update_layout(paper_bgcolor='rgba(0,0,0,0)', 
+                                          plot_bgcolor='rgba(0,0,0,0)', 
+                                          font_color='#94A3B8',
+                                          yaxis=dict(showgrid=False),
+                                          xaxis=dict(title=None),
+                                          showlegend=False,
+                                          margin=dict(t=20, b=0, l=0, r=0))
+                    st.plotly_chart(fig_bar, use_container_width=True)
+            else:
+                st.info("No hay gastos registrados para analizar.")
         else:
             st.info("¡Bienvenido! Empieza registrando tus ingresos en el menú lateral.")
 
     elif nav in ["Ingreso", "Gasto"]:
         st.header(f"Registrar {nav}")
-        m = st.number_input("Monto", step=100.0)
-        c1, c2 = st.columns(2)
-        f = c1.date_input("Fecha", datetime.now())
-        cat = c1.text_input("Categoría", "General")
-        met = c2.selectbox("Método", ["Efectivo", "Tarjeta", "Transferencia"])
-        desc = c2.text_input("Nota opcional")
-        
-        if st.button("Guardar Movimiento", use_container_width=True):
-            db_insertar(user['id'], f, nav, cat, desc, m, met)
-            st.success("¡Guardado!")
-            time.sleep(0.5)
-            st.rerun()
+
+        # BLOQUEO SI ESTÁ VENCIDO
+        if user.get('expired', False):
+             st.warning(f"🔒 Para registrar nuevos {nav}s debes renovar tu suscripción.")
+             st.info("👆 Usa el botón de arriba 'RENOVAR AHORA' para desbloquear esta función.")
+        else:
+            # Monto
+            m = st.number_input("Monto", step=100.0, min_value=0.0)
+            
+            # Dos columnas
+            c1, c2 = st.columns(2)
+            
+            # Fecha
+            f = c1.date_input("Fecha", datetime.now())
+            
+            # CATEGORÍAS MEJORADAS con emojis y opción de crear nuevas
+            categorias_predefinidas = [
+                "💰 Salario", "🏠 Vivienda", "🍔 Alimentación", "🚗 Transporte",
+                "💊 Salud", "🎓 Educación", "🎮 Entretenimiento", "👕 Ropa",
+                "📱 Servicios", "💳 Deudas", "💼 Negocios", "🎁 Regalos",
+                "✈️ Viajes", "🔧 Mantenimiento", "📊 Inversiones", "🆕 Crear nueva..."
+            ]
+            
+            cat_seleccionada = c1.selectbox("Categoría", categorias_predefinidas, index=0)
+            
+            # Si selecciona "Crear nueva...", mostrar campo de texto
+            if cat_seleccionada == "🆕 Crear nueva...":
+                cat = c1.text_input("Nombre de la categoría", placeholder="Ej: Mascotas 🐶")
+                if not cat:
+                    cat = "General"
+            else:
+                cat = cat_seleccionada
+            
+            # MÉTODO DE PAGO MEJORADO con emojis y key única
+            metodos_pago = ["💵 Efectivo", "💳 Tarjeta Débito", "💎 Tarjeta Crédito", "🏦 Transferencia", "📱 Billetera Digital"]
+            met = c2.selectbox("Método de Pago", metodos_pago, index=0, key=f"metodo_{nav}")
+            
+            # Nota opcional
+            desc = c2.text_input("Nota opcional", placeholder="Ej: Compra en supermercado")
+            
+            # Botón guardar con validación
+            if st.button("Guardar Movimiento 💾", use_container_width=True):
+                if m > 0:
+                    db_insertar(user['id'], f, nav, cat, desc, m, met)
+                    st.success("✅ ¡Guardado correctamente!")
+                    time.sleep(0.8)
+                    st.rerun()
+                else:
+                    st.error("⚠️ El monto debe ser mayor a cero")
 
     elif nav == "Datos":
-        st.title("Historial")
-        st.dataframe(db_obtener(user['id']), use_container_width=True)
+        st.title("📊 Historial de Transacciones")
+        st.caption("Todas tus transacciones ordenadas por fecha")
+        
+        df = db_obtener(user['id'])
+        
+        if not df.empty:
+            # FORMATEAR FECHAS A ZONA HORARIA DE CHILE
+            df_display = df.copy()
+            
+            # Convertir a horario de Chile (UTC-3)
+            from datetime import timezone, timedelta
+            chile_tz = timezone(timedelta(hours=-3))
+            
+            # Formatear la fecha de forma legible
+            df_display['fecha'] = pd.to_datetime(df_display['fecha']).dt.tz_localize('UTC').dt.tz_convert(chile_tz)
+            df_display['fecha'] = df_display['fecha'].dt.strftime('%d-%m-%Y')  # Formato: 07-01-2026
+            
+            # Formatear el monto con símbolo de peso y comas
+            df_display['monto'] = df_display['monto'].apply(lambda x: f"${x:,.0f}")
+            
+            # Renombrar columnas para que sean más claras
+            df_display = df_display.rename(columns={
+                'fecha': '📅 Fecha',
+                'tipo': '📌 Tipo',
+                'categoria': '🏷️ Categoría',
+                'descripcion': '📝 Descripción',
+                'monto': '💰 Monto',
+                'metodo': '💳 Método'
+            })
+            
+            # Seleccionar solo las columnas relevantes
+            columnas_mostrar = ['📅 Fecha', '📌 Tipo', '🏷️ Categoría', '📝 Descripción', '💰 Monto', '💳 Método']
+            df_display = df_display[columnas_mostrar]
+            
+            # Mostrar tabla con configuración mejorada
+            st.dataframe(df_display, use_container_width=True, hide_index=True, height=400)
+            
+            # Mostrar total de transacciones
+            st.caption(f"📊 Total de transacciones: {len(df_display)}")
+            
+            st.divider()
+            st.subheader("📥 Exportar Datos")
+            
+            # LÓGICA DE EXPORTACIÓN (SaaS Feature)
+            csv = df_display.to_csv(index=False).encode('utf-8')
+            
+            if user.get('expired', False):
+                 st.warning("🔒 La exportación de datos es una función Premium.")
+                 st.download_button(
+                     label="🔒 Descargar CSV (Premium)",
+                     data=csv,
+                     file_name="mis_finanzas_locked.csv",
+                     mime="text/csv",
+                     disabled=True,
+                     help="Renueva tu plan para descargar tus datos."
+                 )
+            else:
+                st.download_button(
+                    label="📥 Descargar Reporte CSV",
+                    data=csv,
+                    file_name=f"reporte_financepro_{datetime.now().strftime('%d%m%Y')}.csv",
+                    mime="text/csv",
+                )
+        else:
+            st.info("📭 No hay transacciones registradas aún. ¡Empieza registrando tu primer movimiento!")
 
 if st.session_state['logged_in']:
     main_app()

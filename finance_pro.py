@@ -1308,3 +1308,4 @@ elif st.session_state.get('logged_in', False):
     main_app()
 else:
     login_register_page()
+

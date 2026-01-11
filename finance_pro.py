@@ -137,7 +137,7 @@ def db_crear_usuario(email, password, nombre):
                 "data": {
                     "nombre": nombre
                 },
-                "email_redirect_to": "http://localhost:8501"
+                "email_redirect_to": "https://finance-cloud-ypzz4p5ezhnja3ns8cexek.streamlit.app"
             }
         })
         
@@ -227,9 +227,9 @@ def db_login(email, password):
 
 def db_recuperar_password(email):
     try:
-        # Enviar el Link Mágico apuntando a LOCALHOST para pruebas
-        # Nota: Asegúrate de que http://localhost:8501 esté en Supabase > Auth > URL Configuration > Redirect URLs
-        url_app = "http://localhost:8501" 
+        # Enviar el Link Mágico apuntando a la APP en la NUBE
+        # Nota: Esta URL coincide con el Site URL configurado en Supabase
+        url_app = "https://finance-cloud-ypzz4p5ezhnja3ns8cexek.streamlit.app" 
         supabase.auth.reset_password_email(email, options={"redirect_to": url_app})
         return True, None
     except Exception as e:
@@ -1308,4 +1308,3 @@ elif st.session_state.get('logged_in', False):
     main_app()
 else:
     login_register_page()
-

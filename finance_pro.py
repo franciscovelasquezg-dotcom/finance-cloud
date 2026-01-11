@@ -177,7 +177,27 @@ def db_login(email, password):
                 profile['email'] = res.user.email 
                 return profile, None 
             else:
-                return {"id": res.user.id, "nombre": "Usuario", "email": res.user.email, "plan": "free", "dias_restantes": 30}, None
+                # AUTO-HEAL: Si el usuario existe en Auth pero NO en la tabla 'perfiles' (Fallo del Trigger),
+                # lo creamos manualmente ahora para que aparezca en el Panel Admin.
+                try:
+                    new_profile = {
+                        "id": res.user.id,
+                        "email": res.user.email,
+                        "nombre": res.user.user_metadata.get('nombre', 'Usuario'),
+                        "plan": "free",
+                        "activo": True,
+                        "subscription_end": (datetime.now() + timedelta(days=30)).isoformat()
+                    }
+                    supabase.table("perfiles").insert(new_profile).execute()
+                    
+                    # Añadir campos volátiles para la sesión actual
+                    new_profile['dias_restantes'] = 30
+                    new_profile['expired'] = False
+                    return new_profile, None
+                except Exception as e:
+                    # Fallback final si falla la escritura (ej: error de red)
+                    print(f"Error Auto-Heal Profile: {e}")
+                    return {"id": res.user.id, "nombre": "Usuario", "email": res.user.email, "plan": "free", "dias_restantes": 30}, None
                 
     except Exception as e:
         msg = str(e)
@@ -362,11 +382,8 @@ st.markdown("""
     }
     
     /* Opciones del Dropdown (Menú desplegable) */
-    ul[data-baseweb="menu"] {
-        background-color: #1E293B !important;
-        border: 1px solid #334155 !important;
-    }
     li[role="option"] {
+         background-color: #1E293B !important;
          color: #E2E8F0 !important;
     }
     li[role="option"]:hover, li[role="option"][aria-selected="true"] {
@@ -377,10 +394,10 @@ st.markdown("""
     
 
     
-    /* Dropdown menu - Fondo oscuro */
-    div[data-baseweb="popover"] {
+    /* Dropdown menu - Fondo oscuro GLOBAL */
+    div[data-baseweb="popover"], div[data-baseweb="popover"] > div, ul[data-baseweb="menu"] {
         background-color: #1E293B !important;
-        border: 2px solid #334155 !important;
+        border: 1px solid #334155 !important;
     }
     
     /* Opciones del menú - Texto blanco */
@@ -660,12 +677,17 @@ def admin_panel_page():
 
                 with c3:
                     if activo:
-                        if st.button("🛑 Bloquear Acceso", key=f"blk_{u['id']}"):
+                        # Botón para bloquear/dar de baja
+                        if st.button("⛔ Dar de Baja / Bloquear", key=f"blk_{u['id']}", help="Desactiva el acceso inmediatamente (Ej: No pagó)"):
                             supabase.table("perfiles").update({"activo": False}).eq("id", u['id']).execute()
+                            st.toast("Usuario bloqueado")
+                            time.sleep(1)
                             st.rerun()
                     else:
-                        if st.button("✅ Desbloquear", key=f"unblk_{u['id']}"):
+                        if st.button("✅ Reactivar Acceso", key=f"unblk_{u['id']}"):
                             supabase.table("perfiles").update({"activo": True}).eq("id", u['id']).execute()
+                            st.toast("Usuario reactivado")
+                            time.sleep(1)
                             st.rerun()
         
         st.divider()

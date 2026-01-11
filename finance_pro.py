@@ -475,7 +475,16 @@ def login_register_page():
                     st.error(error)
         
         with tab_register:
-            st.info("💎 Prueba Premium Gratis por 30 Días.")
+            st.markdown("""
+                <div style="background: rgba(16, 185, 129, 0.1); border: 1px solid #10B981; border-radius: 8px; padding: 10px; margin-bottom: 15px;">
+                    <h4 style="margin:0; color: #10B981;">💎 Comienza Gratis 30 Días</h4>
+                    <p style="margin:0; font-size: 0.9rem; color: #E2E8F0;">Luego elige tu plan:</p>
+                    <ul style="margin: 5px 0 0 15px; font-size: 0.85rem; color: #CBD5E1;">
+                        <li><b>Básico ($2.490):</b> App Web + 🤖 Telegram Bot</li>
+                        <li><b>Pro ($3.990):</b> App Web + 💬 WhatsApp Bot</li>
+                    </ul>
+                </div>
+            """, unsafe_allow_html=True)
             nu = st.text_input("Correo Electrónico", key="s_u")
             nn = st.text_input("Nombre Completo", key="s_n")
             np = st.text_input("Contraseña", type="password", help="Mínimo 6 caracteres", key="s_p")
@@ -798,7 +807,7 @@ def main_app():
                         st.error("Las contraseñas no coinciden o son muy cortas.")
 
             st.divider()
-            nav = st.radio("", ["Panel", "Ingreso", "Gasto", "Ahorro", "Datos"])
+            nav = st.radio("", ["Panel", "Ingreso", "Gasto", "Ahorro", "Datos"], key="nav_dashboard")
         
         st.divider()
         if st.button("Cerrar Sesión"):
@@ -1013,12 +1022,16 @@ def main_app():
             # Botón guardar con validación
             if st.button("Guardar Movimiento 💾", use_container_width=True):
                 if m > 0:
-                    db_insertar(user['id'], f, nav, cat, desc, m, met)
-                    st.success("✅ ¡Guardado correctamente!")
-                    time.sleep(0.8)
-                    st.rerun()
+                    ok = db_insertar(user['id'], f, nav, cat, desc, m, met)
+                    if ok:
+                        st.success("✅ Registro guardado correctamente. Volviendo al inicio...")
+                        time.sleep(1.5)
+                        st.session_state["nav_dashboard"] = "Panel" # Redirigir
+                        st.rerun()
+                    else:
+                        st.error("Error al guardar en la nube")
                 else:
-                    st.error("⚠️ El monto debe ser mayor a cero")
+                    st.error("El monto debe ser mayor a 0")
 
     elif nav == "Datos":
         st.title("📊 Historial de Transacciones")

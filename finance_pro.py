@@ -137,7 +137,7 @@ def db_crear_usuario(email, password, nombre):
                 "data": {
                     "nombre": nombre
                 },
-                "email_redirect_to": "https://finance-cloud-ypzz4p5ezhnja3ns8cexek.streamlit.app"
+                "email_redirect_to": "http://localhost:8501"
             }
         })
         

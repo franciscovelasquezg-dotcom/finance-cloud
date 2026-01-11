@@ -624,6 +624,10 @@ def check_auth_callback():
         qp = st.query_params
         code = qp.get("code")
         
+        # DEBUG: Mostrar qué está llegando en la URL
+        st.info("🔍 Analizando parámetros URL...")
+        st.write(f"Query Params: {qp}")
+
         if code:
             # Intercambiar código por sesión
             st.toast("🔑 Autenticando token de recuperación...", icon="🔄")

@@ -251,6 +251,61 @@ def db_borrar(id_transaccion, usuario_id):
     except:
         pass
 
+def db_crear_habito(usuario_id, nombre):
+    try:
+        supabase.table("habitos").insert({"usuario_id": usuario_id, "nombre": nombre}).execute()
+        return True
+    except Exception as e:
+        return False
+
+def db_obtener_habitos(usuario_id):
+    try:
+        # 1. Obtener hábitos
+        habitos = supabase.table("habitos").select("*").eq("usuario_id", usuario_id).order("created_at").execute().data
+        if not habitos: return []
+        
+        # 2. Obtener registros de los últimos 7 días
+        hoy = datetime.now().date()
+        hace_7_dias = hoy - timedelta(days=6)
+        registros = supabase.table("registros_habitos").select("*").in_("habito_id", [h['id'] for h in habitos]).gte("fecha", str(hace_7_dias)).execute().data
+        
+        # 3. Mapear registros
+        mapa_registros = {(r['habito_id'], r['fecha']): r['completado'] for r in registros}
+        
+        res = []
+        dias = [(hoy - timedelta(days=i)) for i in range(5, -1, -1)] # Hoy y 5 dias atras
+        
+        for h in habitos:
+            row = {"id": h['id'], "nombre": h['nombre']}
+            # Calcular racha (simplificado)
+            racha = 0
+            # Populate days
+            for d in dias:
+                fecha_str = str(d)
+                estado = mapa_registros.get((h['id'], fecha_str), False)
+                row[fecha_str] = estado
+            res.append(row)
+            
+        return res, [str(d) for d in dias]
+    except Exception as e:
+        print(f"Error habitos: {e}")
+        return [], []
+
+def db_toggle_habito(habito_id, fecha, estado):
+    try:
+        if estado:
+            # Insertar (Upsert para evitar duplicados si la constraint única falla)
+            supabase.table("registros_habitos").upsert(
+                {"habito_id": habito_id, "fecha": fecha, "completado": True}, 
+                on_conflict="habito_id, fecha"
+            ).execute()
+        else:
+            # Borrar
+            supabase.table("registros_habitos").delete().eq("habito_id", habito_id).eq("fecha", fecha).execute()
+        return True
+    except Exception as e:
+        return False
+
 # --- ESTADO Y RUTAS ---
 if 'logged_in' not in st.session_state:
     st.session_state['logged_in'] = False
@@ -532,6 +587,36 @@ def login_register_page():
                     st.session_state['recovery_sent'] = False
                     st.rerun()
 
+def render_reset_password_page():
+    st.markdown("""
+        <div style="text-align: center; margin-bottom: 2rem;">
+             <h1>🔄 Establecer Nueva Contraseña</h1>
+             <p>Ingresa tu nueva clave para asegurar tu cuenta.</p>
+        </div>
+    """, unsafe_allow_html=True)
+    
+    col1, col2, col3 = st.columns([1, 2, 1])
+    with col2:
+        new_p1 = st.text_input("Nueva Contraseña", type="password", key="reset_p1")
+        new_p2 = st.text_input("Confirmar Nueva Contraseña", type="password", key="reset_p2")
+        
+        if st.button("💾 Guardar y Entrar", use_container_width=True):
+            if new_p1 == new_p2 and len(new_p1) >= 6:
+                try:
+                    supabase.auth.update_user({"password": new_p1})
+                    st.success("¡Contraseña actualizada correctamente! 🔐")
+                    st.toast("Clave guardada. Redirigiendo...", icon="✅")
+                    # Quitamos el modo reset y entramos normal
+                    st.session_state['reset_mode'] = False
+                    st.session_state['logged_in'] = True
+                    # Opcional: limpiar query params si quedaba algo
+                    time.sleep(1.5)
+                    st.rerun()
+                except Exception as e:
+                    st.error(f"Error al guardar: {e}")
+            else:
+                 st.error("Las contraseñas no coinciden o son muy cortas (mín. 6 caracteres).")
+
 def check_auth_callback():
     """Verifica si hay un código de autenticación en la URL (Link Mágico/Recuperación)"""
     try:
@@ -543,6 +628,22 @@ def check_auth_callback():
             # Intercambiar código por sesión
             st.toast("🔑 Autenticando token de recuperación...", icon="🔄")
             res = supabase.auth.exchange_code_for_session({"auth_code": code})
+            if res.user:
+                # Login exitoso via link -> ACTIVAR MODO RESET
+                # En vez de entrar directo, mostramos la pantalla de nueva clave
+                st.session_state['reset_mode'] = True
+                
+                # Obtener perfil (para tener nombre y datos por si acaso)
+                prof_res = supabase.table("perfiles").select("*").eq("id", res.user.id).execute()
+                if prof_res.data:
+                    st.session_state['user_info'] = prof_res.data[0]
+                    st.session_state['user_info']['email'] = res.user.email
+                
+                # Limpiar URL
+                st.query_params.clear()
+                st.rerun()
+    except Exception as e:
+        st.error(f"Error procesando enlace: {e}")
             if res.user:
                 # Login exitoso via link
                 st.session_state['logged_in'] = True
@@ -564,6 +665,84 @@ def check_auth_callback():
 
 # --- INIT AUTH CHECK ---
 check_auth_callback()
+
+def render_habitos_page(user):
+    st.title("🎯 Tracker de Hábitos")
+    st.markdown("Crea hábitos y marca tu progreso diario. ¡La consistencia es clave!")
+    
+    # 1. Crear Nuevo Hábito
+    with st.expander("✨ Nuevo Hábito", expanded=False):
+        c1, c2 = st.columns([3, 1])
+        with c1:
+            nuevo_nombre = st.text_input("Nombre del Hábito (Ej: Gimnasio, Leer)", key="new_habit_name")
+        with c2:
+            st.write("") # Spacer
+            st.write("") 
+            if st.button("Crear", use_container_width=True):
+                if db_crear_habito(user['id'], nuevo_nombre):
+                    st.success("¡Creado!")
+                    st.rerun()
+                else:
+                    st.error("Error al crear")
+
+    # 2. Visualizar y Marcar
+    habitos_data, dias_labels = db_obtener_habitos(user['id'])
+    
+    if not habitos_data:
+        st.info("Aún no tienes hábitos. ¡Crea uno arriba!")
+        return
+
+    # Construir DataFrame para Data Editor
+    df = pd.DataFrame(habitos_data)
+    
+    # Configurar columnas editables (fechas) y no editables (id, nombre)
+    column_config = {
+        "id": None, # Ocultar
+        "nombre": st.column_config.TextColumn("Hábito", disabled=True, width="medium"),
+    }
+    
+    # Configurar columnas de fechas como Checkbox
+    for dia in dias_labels:
+        # Formato bonito para el header: "Lun 11"
+        fecha_obj = datetime.strptime(dia, "%Y-%m-%d")
+        header_dia = fecha_obj.strftime("%d/%m")
+        column_config[dia] = st.column_config.CheckboxColumn(header_dia, width="small")
+
+    # Mostrar Data Editor
+    st.markdown("### 📅 Tu Semana")
+    edited_df = st.data_editor(
+        df,
+        column_config=column_config,
+        hide_index=True,
+        use_container_width=True,
+        key="habits_editor"
+    )
+
+    # Detectar cambios y guardar (Callback simple)
+    # Streamlit data_editor no devuelve diff fácil, pero comparamos vs sesión o vs DB?
+    # Mejor: Al hacer cambios, Streamlit re-ejecuta. Pero ups, data_editor returna el estado FINAL.
+    # ¿Cómo saber qué celda cambió para llamar toggle?
+    # Diff vs snapshot anterior es complejo.
+    # ENFOQUE SIMPLE: Botones individuales si data_editor es muy complejo de sincronizar row-by-row.
+    # Ó iterar todo el DF editado y comparar con el original (costoso pero seguro).
+    
+    # Vamos a Iterar y comparar con lo que trajimos de DB (habitos_data es nuestra 'source of truth' al inicio del run)
+    # Si hay diferencia, actualizamos DB.
+    
+    for index, row in edited_df.iterrows():
+        # Buscar la fila original correspondiente por ID
+        original_row = next((h for h in habitos_data if h['id'] == row['id']), None)
+        if original_row:
+            for dia in dias_labels:
+                if row[dia] != original_row[dia]:
+                    # CAMBIO DETECTADO
+                    nuevo_estado = row[dia]
+                    # Actualizar DB
+                    db_toggle_habito(row['id'], dia, nuevo_estado)
+                    # No hacemos rerun inmedito para permitir multiples clicks, 
+                    # pero ojo que al siguiente rerun se refresca desde DB.
+                    # toast para feedback
+                    st.toast(f"Hábito actualizado: {row['nombre']}", icon="✅")
 
 # --- CONFIGURACIÓN ADMIN Y SOPORTE ---
 ADMIN_EMAIL = "franciscovelasquezg@gmail.com"
@@ -807,7 +986,7 @@ def main_app():
                         st.error("Las contraseñas no coinciden o son muy cortas.")
 
             st.divider()
-            nav = st.radio("", ["Panel", "Ingreso", "Gasto", "Ahorro", "Datos"], key="nav_dashboard")
+            nav = st.radio("", ["Panel", "Ingreso", "Gasto", "Ahorro", "Hábitos", "Datos"], key="nav_dashboard")
         
         st.divider()
         if st.button("Cerrar Sesión"):
@@ -847,6 +1026,8 @@ def main_app():
 
     if 'nav' in locals() and nav == "ADMIN":
         admin_panel_page()
+    elif nav == "Hábitos":
+        render_habitos_page(user)
     elif nav == "Panel":
         if not user.get('expired', False) and user.get('dias_restantes', 0) <= 5:
              st.info(f"💡 Recordatorio: Tu membresía vence en {user.get('dias_restantes')} días.")
@@ -1100,7 +1281,10 @@ def main_app():
         else:
             st.info("📭 No hay transacciones registradas aún. ¡Empieza registrando tu primer movimiento!")
 
-if st.session_state['logged_in']:
+# --- CONTROL DE FLUJO PRINCIPAL ---
+if st.session_state.get('reset_mode', False):
+    render_reset_password_page()
+elif st.session_state.get('logged_in', False):
     main_app()
 else:
     login_register_page()

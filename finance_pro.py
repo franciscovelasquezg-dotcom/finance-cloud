@@ -7,6 +7,7 @@ import socket
 import hashlib
 from supabase import create_client, Client
 from twilio.rest import Client as TwilioClient
+import streamlit.components.v1 as components
 
 # --- NOTIFICACIONES TWILIO (WHATSAPP) ---
 def enviar_alerta_whatsapp(mensaje):
@@ -44,14 +45,28 @@ def init_supabase():
 
 supabase = init_supabase()
 
-# --- CONFIGURACIÓN PRINCIPAL ---
-st.set_page_config(
-    page_title="FinancePro Cloud",
-    page_icon="☁️",
-    layout="wide",
-    initial_sidebar_state="collapsed"
-)
+# --- CONFIGURACIÓN# --- CONFIG PAGE ---
+st.set_page_config(page_title="FinancePro", page_icon="💎", layout="wide")
 
+# --- HACK: MANEJO DE FRAGMENTOS HASH (Auto-Reload) ---
+def handle_magic_link_fragments():
+    """Captura el hash #access_token=... y recarga la página enviándolo como query param"""
+    js_code = """
+    <script>
+    if (window.location.hash && window.location.hash.includes('access_token')) {
+        // Copiar el hash a los query params para que Python lo vea
+        // ej: #access_token=123 -> ?access_token=123
+        const newUrl = window.location.pathname + '?' + window.location.hash.substring(1);
+        window.history.replaceState(null, '', newUrl);
+        window.location.reload();
+    }
+    </script>
+    """
+    components.html(js_code, height=0, width=0)
+
+handle_magic_link_fragments()
+
+# --- CSS PERSONALIZADO ---
 # --- CONFIGURACIÓN ADMIN ---
 ADMIN_EMAIL = "franciscovelasquezg@gmail.com"
 WHATSAPP_NUMERO = "56956082703"
@@ -625,27 +640,43 @@ def check_auth_callback():
         code = qp.get("code")
         
         # DEBUG: Mostrar qué está llegando en la URL
-        st.info("🔍 Analizando parámetros URL...")
-        st.write(f"Query Params: {qp}")
+        # st.info("🔍 Analizando parámetros URL...")
+        # st.write(f"Query Params: {qp}")
 
+        # 1. CASO PKCE (Viene 'code')
         if code:
-            # Intercambiar código por sesión
             st.toast("🔑 Autenticando token de recuperación...", icon="🔄")
             res = supabase.auth.exchange_code_for_session({"auth_code": code})
             if res.user:
-                # Login exitoso via link -> ACTIVAR MODO RESET
-                # En vez de entrar directo, mostramos la pantalla de nueva clave
                 st.session_state['reset_mode'] = True
-                
-                # Obtener perfil (para tener nombre y datos por si acaso)
-                prof_res = supabase.table("perfiles").select("*").eq("id", res.user.id).execute()
-                if prof_res.data:
-                    st.session_state['user_info'] = prof_res.data[0]
-                    st.session_state['user_info']['email'] = res.user.email
-                
-                # Limpiar URL
+                _actualizar_perfil_sesion(res.user)
                 st.query_params.clear()
                 st.rerun()
+
+        # 2. CASO IMPLICIT/HASH (Viene 'access_token' gracias al JS)
+        at = qp.get("access_token")
+        rt = qp.get("refresh_token")
+        if at and rt:
+            st.toast("🔑 Sesión recuperada desde Link...", icon="🔓")
+            # Establecer sesión manualmente
+            res = supabase.auth.set_session(at, rt)
+            if res.user:
+                st.session_state['reset_mode'] = True
+                _actualizar_perfil_sesion(res.user)
+                st.query_params.clear()
+                st.rerun()
+
+    except Exception as e:
+        # st.error(f"Error procesando enlace: {e}")
+        pass
+
+def _actualizar_perfil_sesion(user):
+    """Auxiliar para cargar datos de perfil tras login por link"""
+    try:
+        prof_res = supabase.table("perfiles").select("*").eq("id", user.id).execute()
+        if prof_res.data:
+            st.session_state['user_info'] = prof_res.data[0]
+            st.session_state['user_info']['email'] = user.email
     except Exception as e:
         st.error(f"Error procesando enlace: {e}")
 

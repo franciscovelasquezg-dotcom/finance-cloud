@@ -38,7 +38,7 @@ def enviar_alerta_whatsapp(mensaje):
 SUPABASE_URL = "https://ucfdvkirludawhplqgjv.supabase.co"
 SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InVjZmR2a2lybHVkYXdocGxxZ2p2Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjcxMTY4NTMsImV4cCI6MjA4MjY5Mjg1M30.tR-Wl41jo64UvvltNMaIS2qwOrkdksD5BW1H-cWL7Oo"
 
-@st.cache_resource
+# @st.cache_resource -> ELIMINADO POR SEGURIDAD (Evita compartir sesión entre usuarios)
 def init_supabase():
     return create_client(SUPABASE_URL, SUPABASE_KEY)
 
@@ -280,6 +280,7 @@ st.markdown("""
         border: 1px solid #334155 !important; 
         border-radius: 12px !important;
         padding: 10px !important;
+        min-height: 60px !important; /* MÁS ALTOS - SOLICITUD 60PX */
         transition: border-color 0.3s ease;
     }
     .stTextInput input:focus, .stNumberInput input:focus {
@@ -330,42 +331,51 @@ st.markdown("""
     }
     
     /* ═══════════════════════════════════════════════════════════════
-       FIX URGENTE: SELECTBOX - Texto visible y tamaño correcto
+       FIX URGENTE: SELECTBOX - Visualización Premium Correcta
        ═══════════════════════════════════════════════════════════════ */
     
-    /* Selectbox - Contenedor principal MÁS ALTO */
-    div[data-baseweb="select"] {
-        min-height: 45px !important;
-    }
-    
-    /* Selectbox - Input principal con fondo oscuro y texto blanco */
+    /* Contenedor principal del Selectbox */
     div[data-baseweb="select"] > div {
         background-color: #1E293B !important;
-        border: 2px solid #334155 !important;
-        color: #FFFFFF !important;
-        min-height: 45px !important;
-        padding: 8px 12px !important;
-        font-size: 14px !important;
+        border: 1px solid #334155 !important;
+        color: #F8FAFC !important;
+        border-radius: 12px !important;
+        /* Flexbox vital para centrar el texto verticalmente */
+        display: flex !important;
+        align-items: center !important;
+        justify-content: space-between !important;
+        min-height: 60px !important; 
+        padding-left: 12px !important;
+        padding-right: 12px !important;
     }
-    
-    /* Selectbox - Texto seleccionado BLANCO Y VISIBLE */
+
+    /* Texto seleccionado (Value) */
     div[data-baseweb="select"] span {
-        color: #FFFFFF !important;
-        font-weight: 500 !important;
-        font-size: 14px !important;
-        line-height: 1.5 !important;
+        color: #F8FAFC !important;
+        font-size: 15px !important;
+        line-height: normal !important; /* Importante para que no corte */
     }
-    
-    /* Selectbox - Input cuando está abierto */
-    div[data-baseweb="select"] input {
-        color: #FFFFFF !important;
-        font-size: 14px !important;
-    }
-    
-    /* Selectbox - Flecha del dropdown */
+
+    /* Icono de Flecha */
     div[data-baseweb="select"] svg {
         fill: #94A3B8 !important;
     }
+    
+    /* Opciones del Dropdown (Menú desplegable) */
+    ul[data-baseweb="menu"] {
+        background-color: #1E293B !important;
+        border: 1px solid #334155 !important;
+    }
+    li[role="option"] {
+         color: #E2E8F0 !important;
+    }
+    li[role="option"]:hover, li[role="option"][aria-selected="true"] {
+        background-color: #334155 !important;
+        color: #60A5FA !important;
+    }
+
+    
+
     
     /* Dropdown menu - Fondo oscuro */
     div[data-baseweb="popover"] {
@@ -766,7 +776,7 @@ def main_app():
                         st.error("Las contraseñas no coinciden o son muy cortas.")
 
             st.divider()
-            nav = st.radio("", ["Panel", "Ingreso", "Gasto", "Datos"])
+            nav = st.radio("", ["Panel", "Ingreso", "Gasto", "Ahorro", "Datos"])
         
         st.divider()
         if st.button("Cerrar Sesión"):
@@ -817,35 +827,46 @@ def main_app():
         
         ing = df[df['tipo']=='Ingreso']['monto'].sum() if not df.empty else 0
         gas = df[df['tipo']=='Gasto']['monto'].sum() if not df.empty else 0
-        neto = ing - gas
+        aho = df[df['tipo']=='Ahorro']['monto'].sum() if not df.empty else 0
+        
+        # Balance Neto = Caja Disponible (Lo que me queda para gastar)
+        neto = ing - gas - aho
         
         # Tarjetas Métricas Personalizadas (HTML + CSS Premium)
-        c1, c2, c3 = st.columns(3)
+        c1, c2, c3, c4 = st.columns(4)
         
-        # Pre-formatear valores para evitar errores de sintaxis en f-strings complejos
+        # Pre-formatear valores
         neto_fmt = "{:,.0f}".format(neto)
         ing_fmt = "{:,.0f}".format(ing)
         gas_fmt = "{:,.0f}".format(gas)
+        aho_fmt = "{:,.0f}".format(aho)
         color_neto = '#10B981' if neto >= 0 else '#EF4444'
 
         c1.markdown(f"""
             <div class="metric-card">
-                <span style="color:#94A3B8; font-size:0.9rem;">Balance Neto</span>
+                <span style="color:#94A3B8; font-size:0.9rem;">Balance (Caja)</span>
                 <h2 style="color:{color_neto}; margin:0;">${neto_fmt}</h2>
             </div>
         """, unsafe_allow_html=True)
         
         c2.markdown(f"""
             <div class="metric-card">
-                <span style="color:#94A3B8; font-size:0.9rem;">Ingresos Totales</span>
+                <span style="color:#94A3B8; font-size:0.9rem;">Ingresos</span>
                 <h3 style="color:#F8FAFC; margin:0;">${ing_fmt}</h3>
             </div>
         """, unsafe_allow_html=True)
         
         c3.markdown(f"""
             <div class="metric-card">
-                <span style="color:#94A3B8; font-size:0.9rem;">Gastos Totales</span>
+                <span style="color:#94A3B8; font-size:0.9rem;">Gastos</span>
                 <h3 style="color:#F8FAFC; margin:0;">${gas_fmt}</h3>
+            </div>
+        """, unsafe_allow_html=True)
+        
+        c4.markdown(f"""
+            <div class="metric-card">
+                <span style="color:#94A3B8; font-size:0.9rem;">💰 Ahorro/Inv.</span>
+                <h3 style="color:#FBBF24; margin:0;">${aho_fmt}</h3>
             </div>
         """, unsafe_allow_html=True)
         
@@ -853,9 +874,8 @@ def main_app():
         
         if not df.empty:
             # Gráfico con fondo transparente
-            # Gráfico con fondo transparente
             fig = px.area(df, x='fecha', y='monto', color='tipo', 
-                          color_discrete_map={'Ingreso':'#10B981','Gasto':'#EF4444'},
+                          color_discrete_map={'Ingreso':'#10B981','Gasto':'#EF4444', 'Ahorro':'#FBBF24'},
                           title="Evolución Financiera")
             fig.update_layout(paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)', font_color='#94A3B8')
             st.plotly_chart(fig, use_container_width=True)
@@ -907,7 +927,7 @@ def main_app():
         else:
             st.info("¡Bienvenido! Empieza registrando tus ingresos en el menú lateral.")
 
-    elif nav in ["Ingreso", "Gasto"]:
+    elif nav in ["Ingreso", "Gasto", "Ahorro"]:
         st.header(f"Registrar {nav}")
 
         # BLOQUEO SI ESTÁ VENCIDO
@@ -916,21 +936,32 @@ def main_app():
              st.info("👆 Usa el botón de arriba 'RENOVAR AHORA' para desbloquear esta función.")
         else:
             # Monto
-            m = st.number_input("Monto", step=100.0, min_value=0.0)
-            
-            # Dos columnas
+            # Layout de 2 columnas para TODO (Más homogéneo)
             c1, c2 = st.columns(2)
             
-            # Fecha
-            f = c1.date_input("Fecha", datetime.now())
+            # Columna 1
+            m = c1.number_input("Monto", step=100.0, min_value=0.0)
+            f = c2.date_input("Fecha", datetime.now())
             
-            # CATEGORÍAS MEJORADAS con emojis y opción de crear nuevas
-            categorias_predefinidas = [
-                "💰 Salario", "🏠 Vivienda", "🍔 Alimentación", "🚗 Transporte",
-                "💊 Salud", "🎓 Educación", "🎮 Entretenimiento", "👕 Ropa",
-                "📱 Servicios", "💳 Deudas", "💼 Negocios", "🎁 Regalos",
-                "✈️ Viajes", "🔧 Mantenimiento", "📊 Inversiones", "🆕 Crear nueva..."
-            ]
+            # CATEGORÍAS MEJORADAS SEGÚN TIPO
+            if nav == "Ingreso":
+                categorias_predefinidas = [
+                    "💰 Salario", "💼 Freelance", "📈 Rendimientos", "🎁 Regalo",
+                    "🤝 Préstamo Recibido", "🏠 Arriendo", "🆕 Crear nueva..."
+                ]
+            elif nav == "Gasto":
+                categorias_predefinidas = [
+                    "🏠 Vivienda", "🍔 Alimentación", "🚗 Transporte", "💊 Salud",
+                    "🎓 Educación", "🎮 Entretenimiento", "👕 Ropa", "💳 Deudas / Préstamos",
+                    "📱 Servicios", "✈️ Viajes", "🆕 Crear nueva..."
+                ]
+            elif nav == "Ahorro":
+                 categorias_predefinidas = [
+                    "🏦 Fondo Emergencia", "📈 Inversión Bolsa", "₿ Criptomonedas", 
+                    "🏡 Ahorro Casa", "🚗 Ahorro Auto", "🏖️ Vacaciones", "🆕 Crear nueva..."
+                ]
+            else:
+                 categorias_predefinidas = ["General", "🆕 Crear nueva..."]
             
             cat_seleccionada = c1.selectbox("Categoría", categorias_predefinidas, index=0)
             
@@ -943,11 +974,19 @@ def main_app():
                 cat = cat_seleccionada
             
             # MÉTODO DE PAGO MEJORADO con emojis y key única
-            metodos_pago = ["💵 Efectivo", "💳 Tarjeta Débito", "💎 Tarjeta Crédito", "🏦 Transferencia", "📱 Billetera Digital"]
-            met = c2.selectbox("Método de Pago", metodos_pago, index=0, key=f"metodo_{nav}")
+            # MÉTODO DE PAGO MEJORADO con emojis y key única
+            metodos_pago = ["💵 Efectivo", "💳 Tarjeta Débito", "💎 Tarjeta Crédito", "🏦 Transferencia", "📱 Billetera Digital", "🆕 Otro..."]
+            met_seleccionado = c2.selectbox("Método de Pago", metodos_pago, index=0, key=f"metodo_{nav}")
             
-            # Nota opcional
-            desc = c2.text_input("Nota opcional", placeholder="Ej: Compra en supermercado")
+            if met_seleccionado == "🆕 Otro...":
+                met = c2.text_input("Nombre del método", placeholder="Ej: Cheque 🎫")
+                if not met:
+                    met = "Otro"
+            else:
+                met = met_seleccionado
+            
+            # Nota opcional (Full Width para balancear)
+            desc = st.text_input("Nota opcional", placeholder="Ej: Compra en supermercado")
             
             # Botón guardar con validación
             if st.button("Guardar Movimiento 💾", use_container_width=True):

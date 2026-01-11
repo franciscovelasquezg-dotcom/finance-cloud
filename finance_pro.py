@@ -53,12 +53,15 @@ def handle_magic_link_fragments():
     """Captura el hash #access_token=... y recarga la página enviándolo como query param"""
     js_code = """
     <script>
-    if (window.location.hash && window.location.hash.includes('access_token')) {
-        // Copiar el hash a los query params para que Python lo vea
-        // ej: #access_token=123 -> ?access_token=123
-        const newUrl = window.location.pathname + '?' + window.location.hash.substring(1);
-        window.history.replaceState(null, '', newUrl);
-        window.location.reload();
+    try {
+        var parentLocation = window.parent.location;
+        if (parentLocation.hash && parentLocation.hash.includes('access_token')) {
+            // Detected hash in parent window
+            var newUrl = parentLocation.pathname + '?' + parentLocation.hash.substring(1);
+            parentLocation.href = newUrl; // Force reload with query params
+        }
+    } catch (e) {
+        console.error("Error accessing parent window:", e);
     }
     </script>
     """

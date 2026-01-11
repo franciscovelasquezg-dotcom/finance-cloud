@@ -644,24 +644,6 @@ def check_auth_callback():
                 st.rerun()
     except Exception as e:
         st.error(f"Error procesando enlace: {e}")
-            if res.user:
-                # Login exitoso via link
-                st.session_state['logged_in'] = True
-                # Obtener perfil
-                profile, _ = db_login(res.user.email, "dummy") # Hack: db_login maneja perfil. Ideal refactor pero funciona.
-                # Mejor: obtener perfil directo para no requerir password
-                prof_res = supabase.table("perfiles").select("*").eq("id", res.user.id).execute()
-                if prof_res.data:
-                    st.session_state['user_info'] = prof_res.data[0]
-                    st.session_state['user_info']['email'] = res.user.email
-                
-                # Limpiar URL
-                st.query_params.clear()
-                st.success("¡Acceso concedido vía enlace seguro! 🔐")
-                time.sleep(1)
-                st.rerun()
-    except Exception as e:
-        st.error(f"Error procesando enlace: {e}")
 
 # --- INIT AUTH CHECK ---
 check_auth_callback()

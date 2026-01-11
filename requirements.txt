@@ -3,3 +3,4 @@ pandas
 plotly
 supabase
 twilio
+python-telegram-bot

@@ -281,14 +281,14 @@ def db_login(email: str, password: str) -> tuple[dict | None, str | None]:
                         "nombre": res.user.user_metadata.get('nombre', 'Usuario'),
                         "plan": "free",
                         "activo": True,
-                        "subscription_end": (datetime.now(timezone.utc) + timedelta(days=30)).isoformat()
+                        "subscription_end": (datetime.now(timezone.utc) + timedelta(days=20)).isoformat()
                     }
                     supabase.table("perfiles").insert(new_profile).execute()
                     
                     # Notificar admin del auto-heal
                     enviar_alerta_whatsapp(f"⚠️ AUTO-HEAL: Perfil creado para {res.user.email}")
                     
-                    new_profile['dias_restantes'] = 30
+                    new_profile['dias_restantes'] = 20
                     new_profile['expired'] = False
                     return new_profile, None
                     
